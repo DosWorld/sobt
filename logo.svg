@@ -1,0 +1,10 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Hexagon Background -->
+  <path d="M100 10 L190 55 L190 145 L100 190 L10 145 L10 55 Z" fill="#333"/>
+  
+  <!-- The # symbol -->
+  <text x="70" y="135" text-anchor="middle" font-family="Verdana, sans-serif" font-weight="bold" font-size="90" fill="#ffffff">#</text>
+  
+  <!-- The { symbol, slightly larger and overlapping -->
+  <text x="130" y="135" text-anchor="middle" font-family="Verdana, sans-serif" font-weight="bold" font-size="110" fill="#4caf50">{</text>
+</svg>
