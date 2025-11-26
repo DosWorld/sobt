@@ -78,7 +78,5 @@ void mod_Test_init() {
 
 ## License
 
-Small Oberon Translator has GNU GPL v3 License.
-
-Examples and libraries - public domain (or MIT - no metter).
+Small Oberon Translator has CC0 1.0 Universal.
 
