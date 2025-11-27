@@ -94,20 +94,20 @@ int isGlobalDef = 0;
 int isExportDef = 0;
 
 /* -- Keyword Mapping -- */
-#define KW_COUNT 30
+#define KW_COUNT 31
 
 const char *kw_str[] = {
     "MODULE", "BEGIN", "END", "IMPORT", "CONST", "VAR", "PROCEDURE",
     "IF", "THEN", "ELSIF", "ELSE", "WHILE", "DO", "RETURN", "ARRAY",
     "OF", "POINTER", "TO", "INC", "DEC", "BREAK", "CONTINUE", "Adr",
-    "OR", "DIV", "MOD", "TRUE", "FALSE", "SHL", "SHR"
+    "OR", "DIV", "MOD", "TRUE", "FALSE", "SHL", "SHR", "NIL"
 };
 
 const int kw_tok[] = {
     T_MODULE, T_BEGIN, T_END, T_IMPORT, T_CONST, T_VAR, T_PROC,
     T_IF, T_THEN, T_ELSIF, T_ELSE, T_WHILE, T_DO, T_RETURN, T_ARRAY,
     T_OF, T_POINTER, T_TO, T_INC, T_DEC, T_BREAK, T_CONT, T_ADR,
-    T_OR, T_DIV, T_MOD, T_NUMBER, T_NUMBER, T_SHL, T_SHR
+    T_OR, T_DIV, T_MOD, T_NUMBER, T_NUMBER, T_SHL, T_SHR, T_NUMBER
 };
 
 /* -- Forward Declarations -- */
@@ -224,6 +224,7 @@ void next(void) {
                 symbol = kw_tok[k];
                 if (strcmp(g_id, "TRUE") == 0) strcpy(g_id, "1");
                 else if (strcmp(g_id, "FALSE") == 0) strcpy(g_id, "0");
+                else if (strcmp(g_id, "NIL") == 0) strcpy(g_id, "NULL");
                 return;
             }
         }
