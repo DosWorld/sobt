@@ -57,7 +57,6 @@ END Test.
 
 **Generated C (`Test.c`):**
 ```c
-#include "System.h"
 #include "Test.h"
 
 int Test_val;
