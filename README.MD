@@ -64,7 +64,7 @@ END Test.
 int Test_val;
 
 void Test_Add(int x) {
-val += (x);
+Test_val += (x);
 }
 
 void mod_Test_init() {
