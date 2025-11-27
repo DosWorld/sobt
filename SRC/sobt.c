@@ -504,8 +504,7 @@ void type(char *prefix, char *suffix) {
     } else if (isLex(T_POINTER)) {
         if (isLex(T_TO)) {
             type(prefix, suffix);
-            strcat(prefix, "(*");
-            strcat(suffix, ")");
+            strcat(prefix, "*");
         } else {
             strcpy(prefix, "void *");
         }

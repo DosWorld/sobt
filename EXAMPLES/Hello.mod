@@ -4,16 +4,17 @@
 
 MODULE Hello;
 
-IMPORT Os;
+IMPORT Out;
 
 PROCEDURE SayHello;
 BEGIN
-      Os.WriteStr("Hello, world!");
-      Os.WriteLn();
-END sayhello;
+      Out.String("Hello, world!");
+      Out.Ln();
+END SayHello;
 
 
 BEGIN
+       Out.Open();
        SayHello();
 END Hello.
 

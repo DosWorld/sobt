@@ -1,0 +1,40 @@
+MODULE Strings;
+
+(*#
+#include <string.h>
+*)
+
+PROCEDURE Length  (s: POINTER TO CHAR): INTEGER;
+BEGIN
+END Length;
+
+PROCEDURE Insert  (source: POINTER TO CHAR; pos: INTEGER;  dest: POINTER TO CHAR);
+BEGIN
+END Insert;
+
+PROCEDURE Append  (extra: POINTER TO CHAR; dest: POINTER TO CHAR);
+BEGIN
+END Append;
+
+PROCEDURE Delete  (s: POINTER TO CHAR; pos, n: INTEGER);
+BEGIN
+END Delete;
+
+PROCEDURE Replace (source: POINTER TO CHAR; pos: INTEGER; dest: POINTER TO CHAR);
+BEGIN
+END Replace;
+
+PROCEDURE Extract (source: POINTER TO CHAR;  pos, n: INTEGER;  dest: POINTER TO CHAR);
+BEGIN
+END Extract;
+
+PROCEDURE Pos     (pattern, s: POINTER TO CHAR;  pos: INTEGER): INTEGER;
+BEGIN
+END Pos;
+
+PROCEDURE Cap     (s: POINTER TO CHAR);
+BEGIN
+END Cap;
+
+BEGIN
+END Strings.

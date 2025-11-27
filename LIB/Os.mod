@@ -23,26 +23,6 @@ BEGIN
 (*# return _argv[num]; *)
 END Arg;
 
-PROCEDURE WriteChar*(c : CHAR);
-BEGIN
-(*# printf("%c", c); *)
-END WriteChar;
-
-PROCEDURE WriteInt*(i : INTEGER);
-BEGIN
-(*# printf("%d", i); *)
-END WriteInt;
-
-PROCEDURE WriteStr*(p : POINTER TO CHAR);
-BEGIN
-(*# printf("%s", p); *)
-END WriteStr;
-
-PROCEDURE WriteLn*;
-BEGIN
-(*# printf("\n"); *)
-END WriteLn;
-
 PROCEDURE Init*(num : INTEGER; p : POINTER);
 BEGIN
 (*# _argc = num; _argv = p; *)
