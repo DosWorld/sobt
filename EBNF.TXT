@@ -1,0 +1,111 @@
+# Oberon Subset to C Grammar (sobt)
+
+This document describes the syntax of the Oberon language subset supported by the `sobt` translator.
+
+**Notation:**
+- ` = ` : Definition
+- ` . ` : End of rule
+- ` | ` : Alternative
+- `[ ]` : Optional (occurs 0 or 1 time)
+- `{ }` : Repetition (occurs 0 or more times)
+- `( )` : Grouping
+- `" "` : Literal terminal string
+
+---
+
+## 1. Compilation Unit
+
+The compilation unit is a single Module.
+
+Module = "MODULE" Ident ";"
+         [ ImportList ]
+         { Declaration }
+         "BEGIN"
+             StatementSeq
+         "END" Ident "." .
+
+ImportList = "IMPORT" Ident { "," Ident } ";" .
+
+Declaration = ConstBlock
+            | VarBlock
+            | ProcDecl .
+
+ConstBlock = "CONST" { Ident "=" Number ";" } .
+
+VarBlock = "VAR" { IdentList ":" Type ";" } .
+
+IdentList = IdentDef { "," IdentDef } .
+
+IdentDef = Ident [ "*" ] .
+
+ProcDecl = "PROCEDURE" IdentDef [ FormalPars ] [ ":" Type ] ";"
+           [ VarBlock ]
+           "BEGIN"
+               StatementSeq
+           "END" Ident ";" .
+
+FormalPars = "(" [ FPSection { ";" FPSection } ] ")" .
+
+FPSection = IdentList ":" Type .
+
+Type = Ident
+     | "ARRAY" ( Number | Ident ) "OF" Type
+     | "POINTER" [ "TO" Type ]
+     | "PROCEDURE" .
+
+StatementSeq = Statement { ";" Statement } .
+
+Statement = [
+    Designator ( ":=" Expr | [ Parameters ] )
+  | "IF" Expr "THEN" StatementSeq
+    { "ELSIF" Expr "THEN" StatementSeq }
+    [ "ELSE" StatementSeq ]
+    "END"
+  | "WHILE" Expr "DO" StatementSeq "END"
+  | "RETURN" [ Expr ]
+  | "INC" "(" Designator [ "," Expr ] ")"
+  | "DEC" "(" Designator [ "," Expr ] ")"
+  | "BREAK"
+  | "CONTINUE"
+] .
+
+Parameters = "(" [ Expr { "," Expr } ] ")" .
+
+Expr = SimpleExpr [ Relation SimpleExpr ] .
+
+SimpleExpr = [ "+" | "-" ] Term { AddOp Term } .
+
+Term = Factor { MulOp Factor } .
+
+Factor = Ident [ Parameters ]         (* Variable or Function Call *)
+       | Number
+       | Char
+       | String
+       | "TRUE" | "FALSE" | "NIL"
+       | "(" Expr ")"
+       | "Adr" "(" Designator ")"     (* Address-of Operator *)
+       | Designator .
+
+Designator = Ident { "." Ident | "[" Expr "]" } .
+
+Relation = "=" | "#" | "<" | "<=" | ">" | ">=" .
+
+AddOp = "+" | "-" | "OR" .
+
+MulOp = "*" | "DIV" | "MOD" | "&" | "SHL" | "SHR" .
+
+Ident  = Letter { Letter | Digit } .
+
+Number = Digit { Digit }           (* Decimal *)
+       | "$" HexDigit { HexDigit } . (* Hexadecimal *)
+
+String = '"' { AnyChar } '"'
+       | "'" { AnyChar } "'" .
+
+Char   = String . (* Handled identical to String in this subset *)
+
+(* Comments: Standard Oberon (* ... *) with nesting allowed *)
+Comment = "(*" { AnyChar | Comment } "*)" .
+
+(* Directives: Passed directly to C output *)
+Directive = "(*#" { AnyChar } "*)" .
