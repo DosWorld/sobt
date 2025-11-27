@@ -462,8 +462,7 @@ void term(void) {
 }
 
 void simple_expr(void) {
-    if (isLex(T_PLUS)) {
-    else if (isLex(T_MINUS)) emit("-");
+    if (!isLex(T_PLUS)) if (isLex(T_MINUS)) emit("-");
 
     term();
     while (symbol >= T_PLUS && symbol <= T_OR) {

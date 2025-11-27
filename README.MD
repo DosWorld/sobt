@@ -57,17 +57,33 @@ END Test.
 
 **Generated C (`Test.c`):**
 ```c
-/* ...headers... */
+
+#include "System.h"
+#include "Test.h"
+
 int Test_val;
 
 void Test_Add(int x) {
-    Test_val += x;
+val += (x);
 }
 
 void mod_Test_init() {
-    Test_val = 0;
-    Test_Add(10);
+Test_val = (0);
+Test_Add((10));
 }
+```
+
+**Generated H (`Test.h`):**
+```c
+#ifndef Test_H
+#define Test_H
+
+#include <stdint.h>
+
+extern int Test_val;
+
+void mod_Test_init();
+#endif
 ```
 
 ## Limitations
