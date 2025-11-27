@@ -2,12 +2,6 @@
  Small Oberon to C99 Translator (Fixed)
 
  Original by DosWorld (CC0 1.0).
- Fixes applied:
- 1. Precedence logic (parentheses added).
- 2. Declaration syntax (pointers).
- 3. Argument handling (void args).
- 4. "consume_id" bug fixed (export mark moved).
- 5. Single dimension arrays enforced.
 */
 
 #include <stdio.h>
