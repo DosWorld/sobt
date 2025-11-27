@@ -1,7 +1,10 @@
 /*
- Small Oberon to C99 Translator (Fixed)
+ Small Oberon to C99 Translator
 
- Original by DosWorld (CC0 1.0).
+ sobt by DosWorld is marked CC0 1.0 Universal.
+ To view a copy of this mark,
+ visit https://creativecommons.org/publicdomain/zero/1.0/ 
+
 */
 
 #include <stdio.h>
@@ -9,9 +12,11 @@
 #include <string.h>
 #include <ctype.h>
 
+/* -- Constants -- */
 #define MAX_ID_LEN  256
 #define MAX_VARS    64
 
+/* -- Token Definitions -- */
 #define T_NULL      0
 #define T_MODULE    1
 #define T_BEGIN     2
@@ -26,18 +31,16 @@
 #define T_ELSE      11
 #define T_WHILE     12
 #define T_DO        13
-#define T_REPEAT    14
-#define T_UNTIL     15
-#define T_RETURN    16
-#define T_ARRAY     17
-#define T_OF        18
-#define T_POINTER   19
-#define T_TO        20
-#define T_INC       21
-#define T_DEC       22
-#define T_BREAK     23
-#define T_CONT      24
-#define T_ADR       25
+#define T_RETURN    14
+#define T_ARRAY     15
+#define T_OF        16
+#define T_POINTER   17
+#define T_TO        18
+#define T_INC       19
+#define T_DEC       20
+#define T_BREAK     21
+#define T_CONT      22
+#define T_ADR       23
 
 #define T_IDENT     50
 #define T_NUMBER    51
@@ -91,25 +94,28 @@ int isGlobalDef = 0;
 int isExportDef = 0;
 
 /* -- Keyword Mapping -- */
-#define KW_COUNT 33
+#define KW_COUNT 31
 
 const char *kw_str[] = {
     "MODULE", "BEGIN", "END", "IMPORT", "CONST", "VAR", "PROCEDURE",
-    "IF", "THEN", "ELSIF", "ELSE", "WHILE", "DO", "REPEAT", "UNTIL", "RETURN", "ARRAY",
+    "IF", "THEN", "ELSIF", "ELSE", "WHILE", "DO", "RETURN", "ARRAY",
     "OF", "POINTER", "TO", "INC", "DEC", "BREAK", "CONTINUE", "Adr",
     "OR", "DIV", "MOD", "TRUE", "FALSE", "SHL", "SHR", "NIL"
 };
 
 const int kw_tok[] = {
     T_MODULE, T_BEGIN, T_END, T_IMPORT, T_CONST, T_VAR, T_PROC,
-    T_IF, T_THEN, T_ELSIF, T_ELSE, T_WHILE, T_DO, T_REPEAT, T_UNTIL, T_RETURN, T_ARRAY,
+    T_IF, T_THEN, T_ELSIF, T_ELSE, T_WHILE, T_DO, T_RETURN, T_ARRAY,
     T_OF, T_POINTER, T_TO, T_INC, T_DEC, T_BREAK, T_CONT, T_ADR,
     T_OR, T_DIV, T_MOD, T_NUMBER, T_NUMBER, T_SHL, T_SHR, T_NUMBER
 };
 
+/* -- Forward Declarations -- */
 void next(void);
 void expr(void);
 void stat_seq(void);
+
+/* -- Helpers -- */
 
 void cleanup_files(void) {
     if (fc) fclose(fc);
@@ -147,6 +153,7 @@ void consume_id(char *buf) {
     strncpy(buf, g_id, MAX_ID_LEN - 1);
     buf[MAX_ID_LEN - 1] = '\0';
     next();
+    isExportDef = isLex(T_MUL);
 }
 
 const char* get_op_str(int t) {
@@ -190,7 +197,8 @@ const char* get_op_str(int t) {
 /* -- Lexer -- */
 
 void next(void) {
-    int i = 0, k = 0, q = 0, level = 0, isHex;
+    int i = 0, k = 0, q = 0, level = 0;
+
     while (isspace(g_ch)) {
         if (g_ch == '\n') curLine++;
         g_ch = fgetc(fin);
@@ -223,31 +231,25 @@ void next(void) {
         return;
     }
 
+    /* Numbers */
     if (isdigit(g_ch) || g_ch == '$') {
-        isHex = (g_ch == '$');
+        int isHex = (g_ch == '$');
         if (isHex) g_ch = fgetc(fin);
         i = 0;
         if (isHex) {
             g_id[i++]='0';
             g_id[i++]='x';
         }
-        while ((isHex && isxdigit(g_ch)) || (!isHex && isdigit(g_ch))) {
+        while (isxdigit(g_ch)) {
             if (i < 127) g_id[i++] = (char)g_ch;
             g_ch = fgetc(fin);
-        }
-        if(!isHex && (g_ch == '.')) {
-            if (i < 127) g_id[i++] = (char)g_ch;
-            g_ch = fgetc(fin);
-            while (isdigit(g_ch)) {
-                if (i < 127) g_id[i++] = (char)g_ch;
-                g_ch = fgetc(fin);
-            }
         }
         g_id[i] = 0;
         symbol = T_NUMBER;
         return;
     }
 
+    /* Strings */
     if (g_ch == '"' || g_ch == '\'') {
         q = g_ch;
         i = 0;
@@ -264,19 +266,21 @@ void next(void) {
         return;
     }
 
+    /* Operators & Comments */
     switch (g_ch) {
     case '(':
         g_ch = fgetc(fin);
         if (g_ch == '*') {
             g_ch = fgetc(fin);
 
+            /* Check for Directive (*# ... *) -> Output directly to C file */
             if (g_ch == '#') {
-                g_ch = fgetc(fin);
+                g_ch = fgetc(fin); /* skip '#' */
                 while (g_ch != EOF) {
                     if (g_ch == '*') {
                         g_ch = fgetc(fin);
                         if (g_ch == ')') {
-                            g_ch = fgetc(fin);
+                            g_ch = fgetc(fin); /* skip ')' */
                             break;
                         }
                         fputc('*', fc);
@@ -285,10 +289,11 @@ void next(void) {
                         g_ch = fgetc(fin);
                     }
                 }
-                next();
+                next(); /* Recursive call */
                 return;
             }
 
+            /* Standard Comment (* ... *) with nesting support */
             level = 1;
             while (level > 0 && g_ch != EOF) {
                 if (g_ch == '(') {
@@ -391,6 +396,8 @@ void next(void) {
     }
 }
 
+/* -- Parser -- */
+
 void designator(void) {
     char name[MAX_ID_LEN];
     consume_id(name);
@@ -400,7 +407,8 @@ void designator(void) {
         fprintf(fc, "%s_%s", name, g_id);
         next();
     } else {
-        fprintf(fc, "%s_%s", modName, name);
+        if (isGlobalDef) fprintf(fc, "%s_%s", modName, name);
+        else fprintf(fc, "%s", name);
     }
 
     while (symbol == T_DOT || symbol == T_LBRACK) {
@@ -408,7 +416,7 @@ void designator(void) {
             fprintf(fc, ".%s", g_id);
             match(T_IDENT, "Ident expected");
         } else {
-            next();
+            next(); /* consume '[' */
             emit("[");
             expr();
             match(T_RBRACK, "] expected");
@@ -464,7 +472,8 @@ void term(void) {
 }
 
 void simple_expr(void) {
-    if (!isLex(T_PLUS)) if (isLex(T_MINUS)) emit("-");
+    if (isLex(T_PLUS)) { /* no-op */ }
+    else if (isLex(T_MINUS)) emit("-");
 
     term();
     while (symbol >= T_PLUS && symbol <= T_OR) {
@@ -475,15 +484,11 @@ void simple_expr(void) {
 }
 
 void expr(void) {
-    emit("(");
     simple_expr();
-    emit(")");
     if (symbol >= T_EQ && symbol <= T_GTE) {
         emit(get_op_str(symbol));
         next();
-        emit("(");
         simple_expr();
-        emit(")");
     }
 }
 
@@ -495,7 +500,6 @@ void type(char *prefix, char *suffix) {
     if (symbol == T_IDENT) {
         if (strcmp(g_id, "INTEGER") == 0) strcpy(prefix, "int");
         else if (strcmp(g_id, "LONGINT") == 0) strcpy(prefix, "long");
-        else if (strcmp(g_id, "REAL") == 0) strcpy(prefix, "float");
         else if (strcmp(g_id, "BOOLEAN") == 0) strcpy(prefix, "int");
         else if (strcmp(g_id, "CHAR") == 0) strcpy(prefix, "char");
         else strcpy(prefix, g_id);
@@ -503,8 +507,7 @@ void type(char *prefix, char *suffix) {
     } else if (isLex(T_POINTER)) {
         if (isLex(T_TO)) {
             type(prefix, suffix);
-            strcat(prefix, "(*");
-            strcat(suffix, ")");
+            strcat(prefix, "*");
         } else {
             strcpy(prefix, "void *");
         }
@@ -568,13 +571,6 @@ void stat(void) {
         stat_seq();
         match(T_END, "END expected");
         emit("}\n");
-    } else if (isLex(T_REPEAT)) {
-        emit("do {\n");
-        stat_seq();
-        emit("\n} while (!(\n");
-        match(T_UNTIL, "UNTIL expected");
-        expr();
-        emit("));\n");
     } else if (isLex(T_RETURN)) {
         emit("return ");
         if (symbol != T_SEMICOL && symbol != T_END && symbol != T_ELSE && symbol != T_ELSIF) {
@@ -619,10 +615,7 @@ void var_decl(void) {
         do {
             if (count >= MAX_VARS) error("Too many variables");
             consume_id(names[count]);
-
-            if (isLex(T_MUL)) exports[count] = 1;
-            else exports[count] = 0;
-
+            exports[count] = isExportDef;
             count++;
         } while (isLex(T_COMMA));
 
@@ -637,7 +630,7 @@ void var_decl(void) {
                     fprintf(fh, "extern %s %s_%s%s;\n", tp, modName, names[i], ts);
                 }
             } else {
-                fprintf(fc, "static %s %s_%s%s;\n", tp, modName, names[i], ts);
+                fprintf(fc, "%s %s%s;\n", tp, names[i], ts);
             }
         }
     }
@@ -645,7 +638,7 @@ void var_decl(void) {
 
 void proc_decl(void) {
     char procName[MAX_ID_LEN];
-    char args[1024] = "";
+    char args[1024] = "void";
     char retType[64] = "void";
     char paramIds[32][MAX_ID_LEN];
     char pPre[64], pSuf[64], tmpParam[128], rSuf[64], dummy[MAX_ID_LEN];
@@ -654,9 +647,10 @@ void proc_decl(void) {
     if (isLex(T_PROC)) { }
 
     consume_id(procName);
-    exp = isLex(T_MUL);
+    exp = isExportDef;
 
     if (isLex(T_LPAREN)) {
+        args[0] = '\0';
         if (symbol != T_RPAREN) {
             do {
                 pCount = 0;
@@ -670,7 +664,7 @@ void proc_decl(void) {
 
                 for (i = 0; i < pCount; i++) {
                     if (strlen(args) > 0) strcat(args, ", ");
-                    sprintf(tmpParam, "%s %s_%s%s", pPre, modName, paramIds[i], pSuf);
+                    sprintf(tmpParam, "%s %s%s", pPre, paramIds[i], pSuf);
                     strcat(args, tmpParam);
                 }
             } while (isLex(T_SEMICOL));
@@ -678,13 +672,11 @@ void proc_decl(void) {
         match(T_RPAREN, ") expected");
     }
 
-    if (strlen(args) == 0) strcpy(args, "void");
-
     if (isLex(T_COLON)) type(retType, rSuf);
     match(T_SEMICOL, "; expected");
 
-    fprintf(fc, "\n%s%s %s_%s(%s)", exp ? "" : "static ", retType, modName, procName, args);
-    if (exp) fprintf(fh, "extern %s %s_%s(%s);\n", retType, modName, procName, args);
+    fprintf(fc, "\n%s %s_%s(%s)", retType, modName, procName, args);
+    if (exp) fprintf(fh, "%s %s_%s(%s);\n", retType, modName, procName, args);
     emit(" {\n");
 
     isGlobalDef = 0;
@@ -704,7 +696,6 @@ void proc_decl(void) {
 void compile(void) {
     char *dot, cName[MAX_ID_LEN];
     int len;
-    int isExp = 0;
 
     dot = strrchr(sourceFileName, '.');
     len = dot ? (int)(dot - sourceFileName) : (int)strlen(sourceFileName);
@@ -736,15 +727,15 @@ void compile(void) {
         match(T_SEMICOL, "; expected");
     }
 
-    fprintf(fc, "#include \"%s\"\n\n", outNameHeader);
+    fprintf(fc, "\n#include \"System.h\"\n");
+   fprintf(fc, "#include \"%s\"\n\n", outNameHeader);
 
     while (symbol == T_CONST || symbol == T_VAR || symbol == T_PROC) {
         if (isLex(T_CONST)) {
             while (symbol == T_IDENT) {
                 consume_id(cName);
-                isExp = isLex(T_MUL);
                 match(T_EQ, "= expected");
-                fprintf(isExp ? fh : fc, "#define\t%s_%s\t%s\n", modName, cName, g_id);
+                fprintf(isExportDef ? fh : fc, "#define\t%s_%s\t%s\n", modName, cName, g_id);
                 match(T_NUMBER, "Number expected");
                 match(T_SEMICOL, "; expected");
             }
@@ -764,7 +755,7 @@ void compile(void) {
     consume_id(cName);
     match(T_DOT, ". expected");
     match(T_EOF, "EOF expected");
-    fprintf(fh, "\nextern void mod_%s_init();\n#endif\n", modName);
+    fprintf(fh, "\nvoid mod_%s_init();\n#endif\n", modName);
 
     fclose(fc);
     fclose(fh);
