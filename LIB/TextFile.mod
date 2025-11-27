@@ -34,6 +34,21 @@ BEGIN
 (*# fputc(c, h); *)
 END WriteChar;
 
+PROCEDURE WriteInt*(h : POINTER; i : INTEGER);
+BEGIN
+(*# fprintf(h, "%d", i); *)
+END WriteChar;
+
+PROCEDURE WriteStr*(h : POINTER; s : POINTER TO CHAR);
+BEGIN
+(*# fprintf(h, "%s", s); *)
+END WriteChar;
+
+PROCEDURE WriteLn*(h : POINTER);
+BEGIN
+(*# fprintf(h, "\n"); *)
+END WriteChar;
+
 PROCEDURE Eof*(h : POINTER) : BOOLEAN;
 BEGIN
 (*# return feof((FILE * )h); *)

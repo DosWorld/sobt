@@ -6,14 +6,15 @@ MODULE Hello;
 
 IMPORT Os;
 
-PROCEDURE sayhello;
+PROCEDURE SayHello;
 BEGIN
-      Os.WriteStr("Hello, world!\n");
+      Os.WriteStr("Hello, world!");
+      Os.WriteLn();
 END sayhello;
 
 
 BEGIN
-       sayhello();
+       SayHello();
 END Hello.
 
 (*#

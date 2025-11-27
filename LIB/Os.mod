@@ -23,20 +23,20 @@ BEGIN
 (*# return _argv[num]; *)
 END Arg;
 
-PROCEDURE WriteStr*(p : POINTER TO CHAR);
+PROCEDURE WriteChar*(c : CHAR);
 BEGIN
-(*# printf("%s", p); *)
-END WriteStr;
+(*# printf("%c", c); *)
+END WriteChar;
 
 PROCEDURE WriteInt*(i : INTEGER);
 BEGIN
 (*# printf("%d", i); *)
 END WriteInt;
 
-PROCEDURE WriteChar*(c : CHAR);
+PROCEDURE WriteStr*(p : POINTER TO CHAR);
 BEGIN
-(*# printf("%c", c); *)
-END WriteChar;
+(*# printf("%s", p); *)
+END WriteStr;
 
 PROCEDURE WriteLn*;
 BEGIN
