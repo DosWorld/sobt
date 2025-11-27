@@ -57,14 +57,13 @@ END Test.
 
 **Generated C (`Test.c`):**
 ```c
-
 #include "System.h"
 #include "Test.h"
 
 int Test_val;
 
-void Test_Add(int x) {
-Test_val += (x);
+static void Test_Add(int Test_x) {
+Test_val += (Test_x);
 }
 
 void mod_Test_init() {
@@ -82,7 +81,7 @@ Test_Add((10));
 
 extern int Test_val;
 
-void mod_Test_init();
+extern void mod_Test_init();
 #endif
 ```
 

@@ -140,7 +140,6 @@ void emit(const char *s) {
     fprintf(fc, "%s", s);
 }
 
-/* FIX: Removed aggressive consumption of T_MUL (*) from here */
 void consume_id(char *buf) {
     if (symbol != T_IDENT) error("Identifier expected");
     strncpy(buf, g_id, MAX_ID_LEN - 1);
@@ -391,8 +390,7 @@ void designator(void) {
         fprintf(fc, "%s_%s", name, g_id);
         next();
     } else {
-        if (isGlobalDef) fprintf(fc, "%s_%s", modName, name);
-        else fprintf(fc, "%s", name);
+        fprintf(fc, "%s_%s", modName, name);
     }
 
     while (symbol == T_DOT || symbol == T_LBRACK) {
@@ -400,7 +398,7 @@ void designator(void) {
             fprintf(fc, ".%s", g_id);
             match(T_IDENT, "Ident expected");
         } else {
-            next(); /* consume '[' */
+            next();
             emit("[");
             expr();
             match(T_RBRACK, "] expected");
@@ -621,7 +619,7 @@ void var_decl(void) {
                     fprintf(fh, "extern %s %s_%s%s;\n", tp, modName, names[i], ts);
                 }
             } else {
-                fprintf(fc, "static %s %s%s;\n", tp, names[i], ts);
+                fprintf(fc, "static %s %s_%s%s;\n", tp, modName, names[i], ts);
             }
         }
     }
@@ -654,7 +652,7 @@ void proc_decl(void) {
 
                 for (i = 0; i < pCount; i++) {
                     if (strlen(args) > 0) strcat(args, ", ");
-                    sprintf(tmpParam, "%s %s%s", pPre, paramIds[i], pSuf);
+                    sprintf(tmpParam, "%s %s_%s%s", pPre, modName, paramIds[i], pSuf);
                     strcat(args, tmpParam);
                 }
             } while (isLex(T_SEMICOL));
