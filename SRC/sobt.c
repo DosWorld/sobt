@@ -718,7 +718,6 @@ void compile(void) {
         match(T_SEMICOL, "; expected");
     }
 
-    fprintf(fc, "\n#include \"System.h\"\n");
     fprintf(fc, "#include \"%s\"\n\n", outNameHeader);
 
     while (symbol == T_CONST || symbol == T_VAR || symbol == T_PROC) {
