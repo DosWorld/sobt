@@ -1,4 +1,4 @@
-# Oberon Subset to C Grammar (sobt)
+# Oberon Subset Grammar (sobt)
 
 This document describes the syntax of the Oberon language subset supported by the `sobt` translator.
 
