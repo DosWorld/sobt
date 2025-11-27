@@ -627,7 +627,7 @@ void var_decl(void) {
                     fprintf(fh, "extern %s %s_%s%s;\n", tp, modName, names[i], ts);
                 }
             } else {
-                fprintf(fc, "%s %s%s;\n", tp, names[i], ts);
+                fprintf(fc, "static %s %s%s;\n", tp, names[i], ts);
             }
         }
     }
@@ -673,8 +673,8 @@ void proc_decl(void) {
     if (isLex(T_COLON)) type(retType, rSuf);
     match(T_SEMICOL, "; expected");
 
-    fprintf(fc, "\n%s %s_%s(%s)", retType, modName, procName, args);
-    if (exp) fprintf(fh, "%s %s_%s(%s);\n", retType, modName, procName, args);
+    fprintf(fc, "\n%s%s %s_%s(%s)", exp ? "" : "static ", retType, modName, procName, args);
+    if (exp) fprintf(fh, "extern %s %s_%s(%s);\n", retType, modName, procName, args);
     emit(" {\n");
 
     isGlobalDef = 0;
@@ -755,7 +755,7 @@ void compile(void) {
     consume_id(cName);
     match(T_DOT, ". expected");
     match(T_EOF, "EOF expected");
-    fprintf(fh, "\nvoid mod_%s_init();\n#endif\n", modName);
+    fprintf(fh, "\nextern void mod_%s_init();\n#endif\n", modName);
 
     fclose(fc);
     fclose(fh);
