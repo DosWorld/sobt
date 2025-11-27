@@ -496,6 +496,7 @@ void type(char *prefix, char *suffix) {
         if (strcmp(g_id, "INTEGER") == 0) strcpy(prefix, "int");
         else if (strcmp(g_id, "LONGINT") == 0) strcpy(prefix, "long");
         else if (strcmp(g_id, "REAL") == 0) strcpy(prefix, "float");
+        else if (strcmp(g_id, "LONGREAL") == 0) strcpy(prefix, "double");
         else if (strcmp(g_id, "BOOLEAN") == 0) strcpy(prefix, "int");
         else if (strcmp(g_id, "CHAR") == 0) strcpy(prefix, "char");
         else strcpy(prefix, g_id);

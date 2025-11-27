@@ -11,7 +11,7 @@ embeddable or used for bootstrapping.
 
 *   **Output:** Generates paired `.c` (implementation) and `.h` (header) files.
 *   **Module System:** Supports `MODULE`, `IMPORT`, and symbol exporting (`*`).
-*   **Data Types:**  `BOOLEAN`, `CHAR`, `INTEGER`, `LONGINT`, `REAL`,  `POINTER`, and 1D `ARRAY`.
+*   **Data Types:**  `BOOLEAN`, `CHAR`, `INTEGER`, `LONGINT`, `REAL`, `LONGREAL`,  `POINTER`, and 1D `ARRAY`.
 *   **Control Flow:** `IF`/`ELSIF`/`ELSE`, `WHILE`, `REPEAT`/`UNTIL`, `BREAK`, `CONTINUE`.
 *   **Built-ins:** `INC`, `DEC`, `SHL`, `SHR`, `Adr` (address of).
 *   **C Injection:** Inject raw C code using `(*# ... *)` directives.
