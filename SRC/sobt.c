@@ -73,6 +73,10 @@
 #define T_DOT       87 /* . */
 #define T_EOF       99
 
+#define SYM_PARAM 1
+#define SYM_GVAR 2
+#define SYM_GVAR_EXP 3
+
 /* -- Globals -- */
 FILE *fin = NULL;
 FILE *fc = NULL;
@@ -106,6 +110,13 @@ const int kw_tok[] = {
     T_OF, T_POINTER, T_TO, T_INC, T_DEC, T_BREAK, T_CONT, T_ADR,
     T_OR, T_DIV, T_MOD, T_NUMBER, T_NUMBER, T_SHL, T_SHR, T_NUMBER
 };
+
+int stab[128];
+int stab_type[128];
+int stab_id[128];
+int stab_ptr;
+char stab_nbuf[8*1024];
+int stab_nbuf_ptr;
 
 void next(void);
 void expr(void);
@@ -391,6 +402,29 @@ void next(void) {
     }
 }
 
+
+int stab_add(char *name, int sid, int stype) {
+    stab[stab_ptr] = stab_nbuf_ptr;
+    strcpy(&stab_nbuf[stab_nbuf_ptr], name);
+    stab_nbuf_ptr += strlen(name) + 1;
+    stab_type[stab_ptr] = stype;
+    stab_id[stab_ptr] = sid;
+    stab_ptr++;
+    return stab_ptr - 1;
+}
+
+int stab_find(char *name) {
+    int i;
+    i = 0;
+    while(i < stab_ptr) {
+        if(strcmp(&stab_nbuf[stab[i]], name) == 0) {
+            return i;
+        }
+        i++;
+    }
+    return -1;
+}
+
 void designator(void) {
     char name[MAX_ID_LEN];
     consume_id(name);
@@ -609,35 +643,37 @@ void stat_seq(void) {
 }
 
 void var_decl(void) {
-    char names[MAX_VARS][MAX_ID_LEN];
-    int exports[MAX_VARS];
-    int count, i;
+    char idBuf[MAX_ID_LEN];
+    int i, start_stab, isExp;
     char tp[64], ts[64];
 
     while (symbol == T_IDENT) {
-        count = 0;
+        start_stab = stab_ptr;
         do {
-            if (count >= MAX_VARS) error("Too many variables");
-            consume_id(names[count]);
+            consume_id(idBuf);
 
-            if (isLex(T_MUL)) exports[count] = 1;
-            else exports[count] = 0;
+            if (isLex(T_MUL)) isExp = 1;
+            else isExp = 0;
 
-            count++;
+            if (stab_find(idBuf) != -1) error("Duplicate identifier");
+            stab_add(idBuf, isExp, isExp ? SYM_GVAR_EXP : SYM_GVAR);
+
         } while (isLex(T_COMMA));
 
         match(T_COLON, ": expected");
         type(tp, ts);
         match(T_SEMICOL, "; expected");
 
-        for (i = 0; i < count; i++) {
+        for (i = start_stab; i < stab_ptr; i++) {
             if (isGlobalDef) {
-                fprintf(fc, "%s %s_%s%s;\n", tp, modName, names[i], ts);
-                if (exports[i]) {
-                    fprintf(fh, "extern %s %s_%s%s;\n", tp, modName, names[i], ts);
+                if (stab_id[i]) {
+                    fprintf(fc, "%s %s_%s%s;\n", tp, modName, &stab_nbuf[stab[i]], ts);
+                    fprintf(fh, "extern %s %s_%s%s;\n", tp, modName, &stab_nbuf[stab[i]], ts);
+                } else {
+                    fprintf(fc, "static %s %s_%s%s;\n", tp, modName, &stab_nbuf[stab[i]], ts);
                 }
             } else {
-                fprintf(fc, "static %s %s_%s%s;\n", tp, modName, names[i], ts);
+                fprintf(fc, "%s %s_%s%s;\n", tp, modName, &stab_nbuf[stab[i]], ts);
             }
         }
     }
@@ -647,30 +683,37 @@ void proc_decl(void) {
     char procName[MAX_ID_LEN];
     char args[1024] = "";
     char retType[64] = "void";
-    char paramIds[32][MAX_ID_LEN];
     char pPre[64], pSuf[64], tmpParam[128], rSuf[64], dummy[MAX_ID_LEN];
-    int exp = 0, pCount = 0, i;
+    char idBuf[MAX_ID_LEN];
+    int exp = 0, i;
+    int old_stab_ptr, old_stab_nbuf_ptr;
+    int start_stab;
 
     if (isLex(T_PROC)) { }
 
     consume_id(procName);
     exp = isLex(T_MUL);
 
+
+    old_stab_ptr = stab_ptr;
+    old_stab_nbuf_ptr = stab_nbuf_ptr;
+
     if (isLex(T_LPAREN)) {
         if (symbol != T_RPAREN) {
             do {
-                pCount = 0;
+                start_stab = old_stab_ptr;
                 do {
-                    if (pCount >= 32) error("Too many parameters");
-                    consume_id(paramIds[pCount++]);
+                    consume_id(idBuf);
+                    if (stab_find(idBuf) != -1) error("Duplicate parameter");
+                    stab_add(idBuf, 0, SYM_PARAM);
                 } while (isLex(T_COMMA));
 
                 match(T_COLON, ": expected");
                 type(pPre, pSuf);
 
-                for (i = 0; i < pCount; i++) {
+                for (i = start_stab; i < stab_ptr; i++) {
                     if (strlen(args) > 0) strcat(args, ", ");
-                    sprintf(tmpParam, "%s %s_%s%s", pPre, modName, paramIds[i], pSuf);
+                    sprintf(tmpParam, "%s %s_%s%s", pPre, modName, &stab_nbuf[stab[i]], pSuf);
                     strcat(args, tmpParam);
                 }
             } while (isLex(T_SEMICOL));
@@ -699,13 +742,20 @@ void proc_decl(void) {
 
     emit("}\n");
     isGlobalDef = 1;
+
+    stab_ptr = old_stab_ptr;
+    stab_nbuf_ptr = old_stab_nbuf_ptr;
+
 }
 
-void compile(void) {
+void translate(void) {
     char *dot, cName[MAX_ID_LEN];
     int len;
     int isExp = 0;
 
+
+    stab_ptr = 0;
+    stab_nbuf_ptr = 0;
     dot = strrchr(sourceFileName, '.');
     len = dot ? (int)(dot - sourceFileName) : (int)strlen(sourceFileName);
     strncpy(outNameC, sourceFileName, len);
@@ -787,7 +837,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    compile();
+    translate();
 
     fclose(fin);
     return 0;
