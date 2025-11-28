@@ -73,9 +73,12 @@
 #define T_DOT       87 /* . */
 #define T_EOF       99
 
-#define SYM_PARAM 1
+#define STAB_SIZE 128
+#define SYM_CONST 0
+#define SYM_PROC 1
 #define SYM_GVAR 2
 #define SYM_GVAR_EXP 3
+#define SYM_PARAM 4
 
 /* -- Globals -- */
 FILE *fin = NULL;
@@ -111,9 +114,9 @@ const int kw_tok[] = {
     T_OR, T_DIV, T_MOD, T_NUMBER, T_NUMBER, T_SHL, T_SHR, T_NUMBER
 };
 
-int stab[128];
-int stab_type[128];
-int stab_id[128];
+int stab[STAB_SIZE];
+int stab_type[STAB_SIZE];
+int stab_id[STAB_SIZE];
 int stab_ptr;
 char stab_nbuf[8*1024];
 int stab_nbuf_ptr;
@@ -666,10 +669,10 @@ void var_decl(void) {
 
         for (i = start_stab; i < stab_ptr; i++) {
             if (isGlobalDef) {
-                if (stab_id[i]) {
+                if (stab_type[i] == SYM_GVAR_EXP) {
                     fprintf(fc, "%s %s_%s%s;\n", tp, modName, &stab_nbuf[stab[i]], ts);
                     fprintf(fh, "extern %s %s_%s%s;\n", tp, modName, &stab_nbuf[stab[i]], ts);
-                } else {
+                } else if (stab_type[i] == SYM_GVAR) {
                     fprintf(fc, "static %s %s_%s%s;\n", tp, modName, &stab_nbuf[stab[i]], ts);
                 }
             } else {
@@ -694,6 +697,7 @@ void proc_decl(void) {
     consume_id(procName);
     exp = isLex(T_MUL);
 
+    stab_add(procName, 0, SYM_PROC);
 
     old_stab_ptr = stab_ptr;
     old_stab_nbuf_ptr = stab_nbuf_ptr;
@@ -794,6 +798,7 @@ void translate(void) {
                 consume_id(cName);
                 isExp = isLex(T_MUL);
                 match(T_EQ, "= expected");
+                stab_add(cName, 0, SYM_CONST);
                 fprintf(isExp ? fh : fc, "#define\t%s_%s\t%s\n", modName, cName, g_id);
                 match(T_NUMBER, "Number expected");
                 match(T_SEMICOL, "; expected");
