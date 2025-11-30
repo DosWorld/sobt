@@ -18,7 +18,7 @@ BEGIN
        SayHello();
 END Hello.
 
-(*#
+(*{
 int main(int argc, char **argv) {
   mod_Hello_init();
   return 0;

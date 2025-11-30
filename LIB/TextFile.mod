@@ -4,54 +4,54 @@
 
 MODULE TextFile;
 
-(*#
+(*{
 #include <stdio.h>
 #include <stdlib.h>
 *)
 
 PROCEDURE Open*(name : POINTER TO CHAR): POINTER;
 BEGIN
-(*# return fopen(name, "rw"); *)
+(*{ return fopen(name, "rw"); *)
 END Open;
 
 PROCEDURE OpenNew*(name : POINTER TO CHAR): POINTER;
 BEGIN
-(*# return fopen(name, "w"); *)
+(*{ return fopen(name, "w"); *)
 END OpenNew;
 
 PROCEDURE Close*(h : POINTER);
 BEGIN
-(*# fclose(h); *)
+(*{ fclose(h); *)
 END Close;
 
 PROCEDURE ReadChar*(h : POINTER) : CHAR;
 BEGIN
-(*# return fgetc(h); *)
+(*{ return fgetc(h); *)
 END ReadChar;
 
 PROCEDURE WriteChar*(h : POINTER; c : CHAR);
 BEGIN
-(*# fputc(c, h); *)
+(*{ fputc(c, h); *)
 END WriteChar;
 
 PROCEDURE WriteInt*(h : POINTER; i : INTEGER);
 BEGIN
-(*# fprintf(h, "%d", i); *)
+(*{ fprintf(h, "%d", i); *)
 END WriteChar;
 
 PROCEDURE WriteStr*(h : POINTER; s : POINTER TO CHAR);
 BEGIN
-(*# fprintf(h, "%s", s); *)
+(*{ fprintf(h, "%s", s); *)
 END WriteChar;
 
 PROCEDURE WriteLn*(h : POINTER);
 BEGIN
-(*# fprintf(h, "\n"); *)
+(*{ fprintf(h, "\n"); *)
 END WriteChar;
 
 PROCEDURE Eof*(h : POINTER) : BOOLEAN;
 BEGIN
-(*# return feof((FILE * )h); *)
+(*{ return feof((FILE * )h); *)
 END Eof;
 
 

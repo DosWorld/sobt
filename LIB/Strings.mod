@@ -1,6 +1,6 @@
 MODULE Strings;
 
-(*#
+(*{
 #include <string.h>
 *)
 

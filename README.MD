@@ -1,7 +1,7 @@
 #  <img src="logo.svg" align="right" width="120"> Small Oberon to C99 Translator
 
-A lightweight, single-pass compiler that translates a subset
-of the **Oberon** programming language into **C99**.
+A lightweight, single-pass translator that translates a subset
+of the **Oberon** programming language (Small Oberon) into **C99**.
 
 This project is written in strictly portable C (no structs,
 no enums, minimal dependencies) and is designed to be easily
@@ -14,7 +14,8 @@ embeddable or used for bootstrapping.
 *   **Data Types:**  `BOOLEAN`, `CHAR`, `INTEGER`, `LONGINT`, `REAL`, `LONGREAL`,  `POINTER`, and 1D `ARRAY`.
 *   **Control Flow:** `IF`/`ELSIF`/`ELSE`, `WHILE`, `REPEAT`/`UNTIL`, `BREAK`, `CONTINUE`.
 *   **Built-ins:** `INC`, `DEC`, `SHL`, `SHR`, `Adr` (address of).
-*   **C Injection:** Inject raw C code using `(*# ... *)` directives.
+*   **C Injection:** Inject raw C code into .c using `(*{ ... *)` directives.
+*   **C Injection:** Inject raw C code into .h using `(*# ... *)` directives.
 
 ## Build
 

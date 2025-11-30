@@ -6,17 +6,17 @@ END Open;
 
 PROCEDURE Char*(ch: CHAR);
 BEGIN
-(*# printf("%c", ch); *)
+(*{ printf("%c", ch); *)
 END Char;
 
 PROCEDURE String*(str: POINTER TO CHAR);
 BEGIN
-(*# printf("%s", str); *)
+(*{ printf("%s", str); *)
 END String;
 
 PROCEDURE Int*(i, n: LONGINT);
 BEGIN
-(*# printf("%d", i); *)
+(*{ printf("%d", i); *)
 END Int;
 
 (*
@@ -31,7 +31,7 @@ END LongReal;
 
 PROCEDURE Ln*;
 BEGIN
-(*# printf("\n"); *)
+(*{ printf("\n"); *)
 END Ln;
 
 BEGIN

@@ -119,6 +119,10 @@ int stab_type[STAB_SIZE];
 int stab_id[STAB_SIZE];
 int stab_ptr;
 char stab_nbuf[8*1024];
+int stab_finded;
+int stab_fid;
+char stab_fname;
+
 int stab_nbuf_ptr;
 
 void next(void);
@@ -157,7 +161,9 @@ void emit(const char *s) {
 }
 
 void consume_id(char *buf) {
-    if (symbol != T_IDENT) error("Identifier expected");
+    if (symbol != T_IDENT) {
+        error("Identifier expected");
+    }
     strncpy(buf, g_id, MAX_ID_LEN - 1);
     buf[MAX_ID_LEN - 1] = '\0';
     next();
@@ -201,10 +207,40 @@ const char* get_op_str(int t) {
     return NULL;
 }
 
+int stab_add(char *name, int sid, int stype) {
+    stab[stab_ptr] = stab_nbuf_ptr;
+    strcpy(&stab_nbuf[stab_nbuf_ptr], name);
+    stab_nbuf_ptr += strlen(name) + 1;
+    stab_type[stab_ptr] = stype;
+    stab_id[stab_ptr] = sid;
+    stab_ptr++;
+    return stab_ptr - 1;
+}
+
+int stab_find(char *name) {
+    stab_fid = -1;
+    stab_fname = NULL;
+    stab_finded = 0;
+    while(stab_finded < stab_ptr) {
+        if(strcmp(&stab_nbuf[stab[stab_finded]], name) == 0) {
+            stab_fname = &stab_nbuf[stab[stab_finded]];
+            stab_fid = stab_id[stab_finded];
+            return stab_finded;
+        }
+        stab_finded++;
+    }
+    stab_finded = -1;
+    return stab_finded;
+}
+
 /* -- Lexer -- */
 
 void next(void) {
     int i = 0, k = 0, q = 0, level = 0, isHex;
+    stab_finded = -1;
+    stab_fid = -1;
+    stab_fname = NULL;
+    stab_finded = 0;
     while (isspace(g_ch)) {
         if (g_ch == '\n') curLine++;
         g_ch = fgetc(fin);
@@ -234,6 +270,7 @@ void next(void) {
                 return;
             }
         }
+        stab_find(g_id);
         return;
     }
 
@@ -285,6 +322,24 @@ void next(void) {
             g_ch = fgetc(fin);
 
             if (g_ch == '#') {
+                g_ch = fgetc(fin);
+                while (g_ch != EOF) {
+                    if (g_ch == '*') {
+                        g_ch = fgetc(fin);
+                        if (g_ch == ')') {
+                            g_ch = fgetc(fin);
+                            break;
+                        }
+                        fputc('*', fh);
+                    } else {
+                        fputc(g_ch, fh);
+                        g_ch = fgetc(fin);
+                    }
+                }
+                next();
+                return;
+            }
+            if (g_ch == '{') {
                 g_ch = fgetc(fin);
                 while (g_ch != EOF) {
                     if (g_ch == '*') {
@@ -403,29 +458,6 @@ void next(void) {
         cleanup_files();
         exit(1);
     }
-}
-
-
-int stab_add(char *name, int sid, int stype) {
-    stab[stab_ptr] = stab_nbuf_ptr;
-    strcpy(&stab_nbuf[stab_nbuf_ptr], name);
-    stab_nbuf_ptr += strlen(name) + 1;
-    stab_type[stab_ptr] = stype;
-    stab_id[stab_ptr] = sid;
-    stab_ptr++;
-    return stab_ptr - 1;
-}
-
-int stab_find(char *name) {
-    int i;
-    i = 0;
-    while(i < stab_ptr) {
-        if(strcmp(&stab_nbuf[stab[i]], name) == 0) {
-            return i;
-        }
-        i++;
-    }
-    return -1;
 }
 
 void designator(void) {
@@ -653,12 +685,12 @@ void var_decl(void) {
     while (symbol == T_IDENT) {
         start_stab = stab_ptr;
         do {
+            if (stab_finded != -1) error("Duplicate identifier");
             consume_id(idBuf);
 
             if (isLex(T_MUL)) isExp = 1;
             else isExp = 0;
 
-            if (stab_find(idBuf) != -1) error("Duplicate identifier");
             stab_add(idBuf, isExp, isExp ? SYM_GVAR_EXP : SYM_GVAR);
 
         } while (isLex(T_COMMA));
@@ -707,8 +739,8 @@ void proc_decl(void) {
             do {
                 start_stab = old_stab_ptr;
                 do {
+                    if (stab_finded != -1) error("Duplicate parameter");
                     consume_id(idBuf);
-                    if (stab_find(idBuf) != -1) error("Duplicate parameter");
                     stab_add(idBuf, 0, SYM_PARAM);
                 } while (isLex(T_COMMA));
 

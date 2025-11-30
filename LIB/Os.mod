@@ -4,7 +4,7 @@
 
 MODULE Os;
 
-(*#
+(*{
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -15,17 +15,17 @@ char **_argv;
 
 PROCEDURE ArgC* : INTEGER;
 BEGIN
-(*# return _argc; *)
+(*{ return _argc; *)
 END ArgC;
 
 PROCEDURE Arg*(num : INTEGER) : POINTER TO CHAR;
 BEGIN
-(*# return _argv[num]; *)
+(*{ return _argv[num]; *)
 END Arg;
 
 PROCEDURE Init*(num : INTEGER; p : POINTER);
 BEGIN
-(*# _argc = num; _argv = p; *)
+(*{ _argc = num; _argv = p; *)
 END Init;
 
 BEGIN
