@@ -5,15 +5,15 @@ of the **Oberon** programming language (Small Oberon) into **C99**.
 
 This project is written in strictly portable C (no structs,
 no enums, minimal dependencies) and is designed to be easily
-embeddable or used for bootstrapping.
+used for bootstrapping, retro/embedded programming.
 
 ## Features
 
-*   **Output:** Generates paired `.c` (implementation) and `.h` (header) files.
 *   **Module System:** Supports `MODULE`, `IMPORT`, and symbol exporting (`*`).
 *   **Data Types:**  `BOOLEAN`, `CHAR`, `INTEGER`, `LONGINT`, `REAL`, `LONGREAL`,  `POINTER`, and 1D `ARRAY`.
 *   **Control Flow:** `IF`/`ELSIF`/`ELSE`, `WHILE`, `REPEAT`/`UNTIL`, `BREAK`, `CONTINUE`.
 *   **Built-ins:** `INC`, `DEC`, `SHL`, `SHR`, `Adr` (address of).
+*   **Output:** Generates paired `.c` (implementation) and `.h` (header) files.
 *   **C Injection:** Inject raw C code into .c using `(*{ ... *)` directives.
 *   **C Injection:** Inject raw C code into .h using `(*# ... *)` directives.
 
@@ -23,6 +23,12 @@ Compile the translator with any standard C compiler:
 
 ```bash
 gcc -o sobt sobt.c
+```
+
+or
+
+```bash
+wcl sobt.c
 ```
 
 ## Usage
