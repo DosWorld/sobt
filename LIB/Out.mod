@@ -1,4 +1,5 @@
 MODULE Out;
+(*{ #include <stdio.h> *)
 
 PROCEDURE Open*;
 BEGIN
@@ -6,17 +7,17 @@ END Open;
 
 PROCEDURE Char*(ch: CHAR);
 BEGIN
-(*{ printf("%c", ch); *)
+(*{ printf("%c", Out_ch); *)
 END Char;
 
 PROCEDURE String*(str: POINTER TO CHAR);
 BEGIN
-(*{ printf("%s", str); *)
+(*{ printf("%s", Out_str); *)
 END String;
 
 PROCEDURE Int*(i, n: LONGINT);
 BEGIN
-(*{ printf("%d", i); *)
+(*{ printf("%d", Out_i); *)
 END Int;
 
 (*

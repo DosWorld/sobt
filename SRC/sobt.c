@@ -681,7 +681,7 @@ void var_decl(void) {
             if (isLex(T_MUL)) isExp = 1;
             else isExp = 0;
 
-            if (stab_find(idBuf) != -1) error("Duplicate identifier");
+            if (stab_find(idBuf)) error("Duplicate identifier");
             stab_add(idBuf, isExp, isExp ? SYM_GVAR_EXP : SYM_GVAR);
 
         } while (isLex(T_COMMA));
@@ -715,8 +715,6 @@ void proc_decl(void) {
     int old_stab_ptr, old_stab_nbuf_ptr;
     int start_stab;
 
-    if (isLex(T_PROC)) { }
-
     consume_id(procName);
     exp = isLex(T_MUL);
 
@@ -731,7 +729,7 @@ void proc_decl(void) {
                 start_stab = old_stab_ptr;
                 do {
                     consume_id(idBuf);
-                    if (stab_find(idBuf) != -1) error("Duplicate parameter");
+                    if (stab_find(idBuf)) error("Duplicate parameter");
                     stab_add(idBuf, 0, SYM_PARAM);
                 } while (isLex(T_COMMA));
 
@@ -815,7 +813,7 @@ void translate(void) {
 
     fprintf(fc, "#include \"%s\"\n\n", outNameHeader);
 
-    while (symbol == T_CONST || symbol == T_VAR || symbol == T_PROC) {
+    while (1) {
         if (isLex(T_CONST)) {
             while (symbol == T_IDENT) {
                 consume_id(cName);
@@ -828,8 +826,10 @@ void translate(void) {
             }
         } else if (isLex(T_VAR)) {
             var_decl();
-        } else {
+        } else if(isLex(T_PROC)) {
             proc_decl();
+        } else {
+            break;
         }
     }
 
@@ -837,7 +837,7 @@ void translate(void) {
         fprintf(fc, "\nvoid mod_%s_init() {\n", modName);
         stat_seq();
         emit("}\n");
-        fprintf(fh, "\nextern void mod_%s_init();\n#endif\n", modName);
+        fprintf(fh, "\nextern void mod_%s_init();\n", modName);
     }
 
     match(T_END, "END expected");
@@ -845,6 +845,7 @@ void translate(void) {
     match(T_DOT, ". expected");
     match(T_EOF, "EOF expected");
 
+    fprintf(fh, "\n#endif\n", modName);
     fclose(fc);
     fclose(fh);
 }
