@@ -9,7 +9,8 @@
 #include <string.h>
 #include <ctype.h>
 
-#define MAX_ID_LEN  256
+#define MAX_ID_LEN  64
+#define MAX_FNAME_LEN  256
 #define MAX_VARS    64
 
 #define T_NULL      0
@@ -74,11 +75,16 @@
 #define T_EOF       99
 
 #define STAB_SIZE 128
-#define SYM_CONST 0
-#define SYM_PROC 1
-#define SYM_GVAR 2
-#define SYM_GVAR_EXP 3
-#define SYM_PARAM 4
+
+#define T_SYM_THISMOD  200
+#define T_SYM_IMOD     201
+#define T_SYM_AMOD     202
+
+#define T_SYM_CONST    300
+#define T_SYM_PROC     301
+#define T_SYM_GVAR     302
+#define T_SYM_GEVAR    303
+#define T_SYM_PARAM    304
 
 /* -- Globals -- */
 FILE *fin = NULL;
@@ -86,16 +92,15 @@ FILE *fc = NULL;
 FILE *fh = NULL;
 
 int curLine = 1;
-int g_ch = ' ';
+int g_ch;
 int symbol = 0;
 char g_id[MAX_ID_LEN];
 char modName[MAX_ID_LEN];
-char sourceFileName[MAX_ID_LEN];
-char outNameC[MAX_ID_LEN];
-char outNameHeader[MAX_ID_LEN];
 
-int isGlobalDef = 0;
-int isExportDef = 0;
+char sourceFileName[MAX_FNAME_LEN], outNameC[MAX_FNAME_LEN], outNameHeader[MAX_FNAME_LEN];
+
+int isGlobalDef;
+int isExportDef;
 
 /* -- Keyword Mapping -- */
 #define KW_COUNT 33
@@ -126,7 +131,7 @@ void next(void);
 void expr(void);
 void stat_seq(void);
 
-void cleanup_files(void) {
+void cleanup_files() {
     if (fc) fclose(fc);
     if (fh) fclose(fh);
     if (fin) fclose(fin);
@@ -158,10 +163,9 @@ void emit(const char *s) {
 }
 
 void consume_id(char *buf) {
-    if (symbol != T_IDENT) error("Identifier expected");
     strncpy(buf, g_id, MAX_ID_LEN - 1);
     buf[MAX_ID_LEN - 1] = '\0';
-    next();
+    match(T_IDENT, "Identifier expected");
 }
 
 const char* get_op_str(int t) {
@@ -463,17 +467,11 @@ void designator(void) {
         fprintf(fc, "%s_%s", modName, name);
     }
 
-    while (symbol == T_DOT || symbol == T_LBRACK) {
-        if (isLex(T_DOT)) {
-            fprintf(fc, ".%s", g_id);
-            match(T_IDENT, "Ident expected");
-        } else {
-            next();
-            emit("[");
-            expr();
-            match(T_RBRACK, "] expected");
-            emit("]");
-        }
+    if(isLex(T_LBRACK)) {
+        emit("[");
+        expr();
+        match(T_RBRACK, "] expected");
+        emit("]");
     }
 }
 
@@ -515,12 +513,14 @@ void factor(void) {
 }
 
 void term(void) {
+    emit("(");
     factor();
     while (symbol >= T_MUL && symbol <= T_SHR) {
         emit(get_op_str(symbol));
         next();
         factor();
     }
+    emit(")");
 }
 
 void simple_expr(void) {
@@ -682,7 +682,7 @@ void var_decl(void) {
             else isExp = 0;
 
             if (stab_find(idBuf)) error("Duplicate identifier");
-            stab_add(idBuf, isExp, isExp ? SYM_GVAR_EXP : SYM_GVAR);
+            stab_add(idBuf, isExp, isExp ? T_SYM_GEVAR : T_SYM_GVAR);
 
         } while (isLex(T_COMMA));
 
@@ -692,10 +692,10 @@ void var_decl(void) {
 
         for (i = start_stab; i < stab_ptr; i++) {
             if (isGlobalDef) {
-                if (stab_type[i] == SYM_GVAR_EXP) {
+                if (stab_type[i] == T_SYM_GEVAR) {
                     fprintf(fc, "%s %s_%s%s;\n", tp, modName, &stab_nbuf[stab[i]], ts);
                     fprintf(fh, "extern %s %s_%s%s;\n", tp, modName, &stab_nbuf[stab[i]], ts);
-                } else if (stab_type[i] == SYM_GVAR) {
+                } else if (stab_type[i] == T_SYM_GVAR) {
                     fprintf(fc, "static %s %s_%s%s;\n", tp, modName, &stab_nbuf[stab[i]], ts);
                 }
             } else {
@@ -709,7 +709,7 @@ void proc_decl(void) {
     char procName[MAX_ID_LEN];
     char args[1024] = "";
     char retType[64] = "void";
-    char pPre[64], pSuf[64], tmpParam[128], rSuf[64], dummy[MAX_ID_LEN];
+    char pPre[64], pSuf[64], tmpParam[128], rSuf[64];
     char idBuf[MAX_ID_LEN];
     int exp = 0, i;
     int old_stab_ptr, old_stab_nbuf_ptr;
@@ -718,7 +718,7 @@ void proc_decl(void) {
     consume_id(procName);
     exp = isLex(T_MUL);
 
-    stab_add(procName, 0, SYM_PROC);
+    stab_add(procName, 0, T_SYM_PROC);
 
     old_stab_ptr = stab_ptr;
     old_stab_nbuf_ptr = stab_nbuf_ptr;
@@ -730,7 +730,7 @@ void proc_decl(void) {
                 do {
                     consume_id(idBuf);
                     if (stab_find(idBuf)) error("Duplicate parameter");
-                    stab_add(idBuf, 0, SYM_PARAM);
+                    stab_add(idBuf, 0, T_SYM_PARAM);
                 } while (isLex(T_COMMA));
 
                 match(T_COLON, ": expected");
@@ -762,7 +762,7 @@ void proc_decl(void) {
     stat_seq();
     match(T_END, "END expected");
 
-    consume_id(dummy);
+    match(T_IDENT, "Identifier expected");
     match(T_SEMICOL, "; expected");
 
     emit("}\n");
@@ -773,14 +773,76 @@ void proc_decl(void) {
 
 }
 
-void translate(void) {
-    char *dot, cName[MAX_ID_LEN];
-    int len;
-    int isExp = 0;
+void const_decl(void) {
+    char cName[MAX_ID_LEN];
+    int isExp;
+    while (symbol == T_IDENT) {
+        consume_id(cName);
+        isExp = isLex(T_MUL);
+        match(T_EQ, "= expected");
+        stab_add(cName, 0, T_SYM_CONST);
+        fprintf(isExp ? fh : fc, "#define\t%s_%s\t%s\n", modName, cName, g_id);
+        match(T_NUMBER, "Number expected");
+        match(T_SEMICOL, "; expected");
+    }
+}
 
+void translate(char *src) {
+    char *dot;
+    int len;
+
+    isGlobalDef = 0;
+    isExportDef = 0;
 
     stab_ptr = 0;
     stab_nbuf_ptr = 0;
+
+    stab_add("MODULE", 0, T_MODULE);
+    stab_add("BEGIN", 0, T_BEGIN);
+    stab_add("END", 0, T_END);
+    stab_add("IMPORT", 0, T_IMPORT);
+    stab_add("CONST", 0, T_CONST);
+    stab_add("VAR", 0, T_VAR);
+    stab_add("PROCEDURE", 0, T_PROC);
+
+    stab_add("IF", 0, T_IF);
+    stab_add("THEN", 0, T_THEN);
+    stab_add("ELSIF", 0, T_ELSIF);
+    stab_add("ELSE", 0, T_ELSE);
+    stab_add("WHILE", 0, T_WHILE);
+    stab_add("DO", 0, T_DO);
+    stab_add("REPEAT", 0, T_REPEAT);
+    stab_add("UNTIL", 0, T_UNTIL);
+    stab_add("RETURN", 0, T_RETURN);
+    stab_add("ARRAY", 0, T_ARRAY);
+
+    stab_add("OF", 0, T_OF);
+    stab_add("POINTER", 0, T_POINTER);
+    stab_add("TO", 0, T_TO);
+    stab_add("INC", 0, T_INC);
+    stab_add("DEC", 0, T_DEC);
+    stab_add("BREAK", 0, T_BREAK);
+    stab_add("CONTINUE", 0, T_CONT);
+    stab_add("Adr", 0, T_ADR);
+
+    stab_add("OR", 0, T_OR);
+    stab_add("DIV", 0, T_DIV);
+    stab_add("MOD", 0, T_MOD);
+    stab_add("TRUE", 0, T_NUMBER);
+    stab_add("FALSE", 0, T_NUMBER);
+    stab_add("SHL", 0, T_SHL);
+    stab_add("SHR", 0, T_SHR);
+    stab_add("NIL", 0, T_NUMBER);
+
+    fin = fh = fc = NULL;
+
+    strcpy(sourceFileName, src);
+    fin = fopen(sourceFileName, "r");
+    if (!fin) {
+        printf("Error: Cannot open %s\n", sourceFileName);
+        exit(1);
+    }
+
     dot = strrchr(sourceFileName, '.');
     len = dot ? (int)(dot - sourceFileName) : (int)strlen(sourceFileName);
     strncpy(outNameC, sourceFileName, len);
@@ -793,9 +855,11 @@ void translate(void) {
     fh = fopen(outNameHeader, "w");
     if (!fc || !fh) error("Cannot create output files");
 
+    g_ch = fgetc(fin);
     next();
     match(T_MODULE, "MODULE expected");
     consume_id(modName);
+    stab_add(modName, 0, T_SYM_THISMOD);
     match(T_SEMICOL, "; expected");
 
     fprintf(fh, "#ifndef %s_H\n#define %s_H\n\n#include <stdint.h>\n\n", modName, modName);
@@ -805,6 +869,7 @@ void translate(void) {
         do {
             if (symbol == T_IDENT) {
                 fprintf(fc, "#include \"%s.h\"\n", g_id);
+                stab_add(g_id, 0, T_SYM_IMOD);
                 next();
             }
         } while (isLex(T_COMMA));
@@ -815,15 +880,7 @@ void translate(void) {
 
     while (1) {
         if (isLex(T_CONST)) {
-            while (symbol == T_IDENT) {
-                consume_id(cName);
-                isExp = isLex(T_MUL);
-                match(T_EQ, "= expected");
-                stab_add(cName, 0, SYM_CONST);
-                fprintf(isExp ? fh : fc, "#define\t%s_%s\t%s\n", modName, cName, g_id);
-                match(T_NUMBER, "Number expected");
-                match(T_SEMICOL, "; expected");
-            }
+            const_decl();
         } else if (isLex(T_VAR)) {
             var_decl();
         } else if(isLex(T_PROC)) {
@@ -841,71 +898,28 @@ void translate(void) {
     }
 
     match(T_END, "END expected");
-    consume_id(cName);
+    match(T_IDENT, "Identifier expected");
     match(T_DOT, ". expected");
     match(T_EOF, "EOF expected");
 
     fprintf(fh, "\n#endif\n", modName);
     fclose(fc);
     fclose(fh);
+    fclose(fin);
 }
 
 int main(int argc, char **argv) {
-    if (argc != 2) {
+    int i;
+    if (argc == 1) {
         printf("Usage: %s filename.mod\n", argv[0]);
         return 1;
     }
-    if (strlen(argv[1]) >= MAX_ID_LEN) {
-        printf("Error: Filename too long\n");
-        return 1;
+    for(i = 1; i < argc; i++) {
+        if (strlen(argv[i]) >= MAX_FNAME_LEN) {
+            printf("Error: Filename %s is too long\n", argv[i]);
+            return 1;
+        }
+        translate(argv[i]);
     }
-    strcpy(sourceFileName, argv[1]);
-
-    fin = fopen(sourceFileName, "r");
-    if (!fin) {
-        printf("Error: Cannot open %s\n", sourceFileName);
-        return 1;
-    }
-    /*
-        stab_add("MODULE", 0, T_MODULE);
-        stab_add("BEGIN", 0, T_BEGIN);
-        stab_add("END", 0, T_END);
-        stab_add("IMPORT", 0, T_IMPORT);
-        stab_add("CONST", 0, T_CONST);
-        stab_add("VAR", 0, T_VAR);
-        stab_add("PROCEDURE", 0, T_PROC);
-
-        stab_add("IF", 0, T_IF);
-        stab_add("THEN", 0, T_THEN);
-        stab_add("ELSIF", 0, T_ELSIF);
-        stab_add("ELSE", 0, T_ELSE);
-        stab_add("WHILE", 0, T_WHILE);
-        stab_add("DO", 0, T_DO);
-        stab_add("REPEAT", 0, T_REPEAT);
-        stab_add("UNTIL", 0, T_UNTIL);
-        stab_add("RETURN", 0, T_RETURN);
-        stab_add("ARRAY", 0, T_ARRAY);
-
-        stab_add("OF", 0, T_OF);
-        stab_add("POINTER", 0, T_POINTER);
-        stab_add("TO", 0, T_TO);
-        stab_add("INC", 0, T_INC);
-        stab_add("DEC", 0, T_DEC);
-        stab_add("BREAK", 0, T_BREAK);
-        stab_add("CONTINUE", 0, T_CONTINUE);
-        stab_add("Adr", 0, T_ADR);
-
-        stab_add("OR", 0, T_OR);
-        stab_add("DIV", 0, T_DIV);
-        stab_add("MOD", 0, T_MOD);
-        stab_add("TRUE", 0, T_NUMBER);
-        stab_add("FALSE", 0, T_NUMBER);
-        stab_add("SHL", 0, T_SHL);
-        stab_add("SHR", 0, T_SHR);
-        stab_add("NIL", 0, T_NUMBER);
-    */
-    translate();
-
-    fclose(fin);
     return 0;
 }
