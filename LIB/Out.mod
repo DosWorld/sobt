@@ -34,5 +34,4 @@ BEGIN
 (*{ printf("\n"); *)
 END Ln;
 
-BEGIN
 END Out.

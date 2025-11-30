@@ -36,5 +36,4 @@ BEGIN
 END Name;
 *)
 
-BEGIN
 END In.

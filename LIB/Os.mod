@@ -28,5 +28,4 @@ BEGIN
 (*{ _argc = num; _argv = p; *)
 END Init;
 
-BEGIN
 END Os.

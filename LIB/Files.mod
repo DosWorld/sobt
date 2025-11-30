@@ -39,5 +39,5 @@ PROCEDURE WriteBytes (VAR r: Rider;
 			      VAR x: ARRAY OF SYSTEM.BYTE; 
 			      n: LONGINT)
 *)
-BEGIN
+
 END Files.

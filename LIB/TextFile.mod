@@ -55,5 +55,4 @@ BEGIN
 END Eof;
 
 
-BEGIN
 END TextFile.

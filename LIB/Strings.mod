@@ -48,5 +48,4 @@ PROCEDURE Cap*(s: POINTER TO CHAR);
 BEGIN
 END Cap;
 
-BEGIN
 END Strings.

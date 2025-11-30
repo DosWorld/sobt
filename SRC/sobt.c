@@ -114,15 +114,12 @@ const int kw_tok[] = {
     T_OR, T_DIV, T_MOD, T_NUMBER, T_NUMBER, T_SHL, T_SHR, T_NUMBER
 };
 
-int stab[STAB_SIZE];
-int stab_type[STAB_SIZE];
-int stab_id[STAB_SIZE];
+int stab[STAB_SIZE], stab_type[STAB_SIZE], stab_id[STAB_SIZE];
+int stab_finded, stab_fid, stab_ftype;
+char *stab_fname;
+
 int stab_ptr;
 char stab_nbuf[8*1024];
-int stab_finded;
-int stab_fid;
-char stab_fname;
-
 int stab_nbuf_ptr;
 
 void next(void);
@@ -161,9 +158,7 @@ void emit(const char *s) {
 }
 
 void consume_id(char *buf) {
-    if (symbol != T_IDENT) {
-        error("Identifier expected");
-    }
+    if (symbol != T_IDENT) error("Identifier expected");
     strncpy(buf, g_id, MAX_ID_LEN - 1);
     buf[MAX_ID_LEN - 1] = '\0';
     next();
@@ -221,26 +216,24 @@ int stab_find(char *name) {
     stab_fid = -1;
     stab_fname = NULL;
     stab_finded = 0;
+    stab_ftype = -1;
     while(stab_finded < stab_ptr) {
         if(strcmp(&stab_nbuf[stab[stab_finded]], name) == 0) {
             stab_fname = &stab_nbuf[stab[stab_finded]];
             stab_fid = stab_id[stab_finded];
-            return stab_finded;
+            stab_ftype = stab_type[stab_finded];
+            return 1;
         }
         stab_finded++;
     }
     stab_finded = -1;
-    return stab_finded;
+    return 0;
 }
 
 /* -- Lexer -- */
 
 void next(void) {
     int i = 0, k = 0, q = 0, level = 0, isHex;
-    stab_finded = -1;
-    stab_fid = -1;
-    stab_fname = NULL;
-    stab_finded = 0;
     while (isspace(g_ch)) {
         if (g_ch == '\n') curLine++;
         g_ch = fgetc(fin);
@@ -270,7 +263,6 @@ void next(void) {
                 return;
             }
         }
-        stab_find(g_id);
         return;
     }
 
@@ -338,8 +330,7 @@ void next(void) {
                 }
                 next();
                 return;
-            }
-            if (g_ch == '{') {
+            } else if (g_ch == '{') {
                 g_ch = fgetc(fin);
                 while (g_ch != EOF) {
                     if (g_ch == '*') {
@@ -685,12 +676,12 @@ void var_decl(void) {
     while (symbol == T_IDENT) {
         start_stab = stab_ptr;
         do {
-            if (stab_finded != -1) error("Duplicate identifier");
             consume_id(idBuf);
 
             if (isLex(T_MUL)) isExp = 1;
             else isExp = 0;
 
+            if (stab_find(idBuf) != -1) error("Duplicate identifier");
             stab_add(idBuf, isExp, isExp ? SYM_GVAR_EXP : SYM_GVAR);
 
         } while (isLex(T_COMMA));
@@ -739,8 +730,8 @@ void proc_decl(void) {
             do {
                 start_stab = old_stab_ptr;
                 do {
-                    if (stab_finded != -1) error("Duplicate parameter");
                     consume_id(idBuf);
+                    if (stab_find(idBuf) != -1) error("Duplicate parameter");
                     stab_add(idBuf, 0, SYM_PARAM);
                 } while (isLex(T_COMMA));
 
@@ -842,16 +833,17 @@ void translate(void) {
         }
     }
 
-    match(T_BEGIN, "BEGIN expected");
-    fprintf(fc, "\nvoid mod_%s_init() {\n", modName);
-    stat_seq();
-    emit("}\n");
+    if(isLex(T_BEGIN)) {
+        fprintf(fc, "\nvoid mod_%s_init() {\n", modName);
+        stat_seq();
+        emit("}\n");
+        fprintf(fh, "\nextern void mod_%s_init();\n#endif\n", modName);
+    }
 
     match(T_END, "END expected");
     consume_id(cName);
     match(T_DOT, ". expected");
     match(T_EOF, "EOF expected");
-    fprintf(fh, "\nextern void mod_%s_init();\n#endif\n", modName);
 
     fclose(fc);
     fclose(fh);
@@ -873,7 +865,44 @@ int main(int argc, char **argv) {
         printf("Error: Cannot open %s\n", sourceFileName);
         return 1;
     }
+    /*
+        stab_add("MODULE", 0, T_MODULE);
+        stab_add("BEGIN", 0, T_BEGIN);
+        stab_add("END", 0, T_END);
+        stab_add("IMPORT", 0, T_IMPORT);
+        stab_add("CONST", 0, T_CONST);
+        stab_add("VAR", 0, T_VAR);
+        stab_add("PROCEDURE", 0, T_PROC);
 
+        stab_add("IF", 0, T_IF);
+        stab_add("THEN", 0, T_THEN);
+        stab_add("ELSIF", 0, T_ELSIF);
+        stab_add("ELSE", 0, T_ELSE);
+        stab_add("WHILE", 0, T_WHILE);
+        stab_add("DO", 0, T_DO);
+        stab_add("REPEAT", 0, T_REPEAT);
+        stab_add("UNTIL", 0, T_UNTIL);
+        stab_add("RETURN", 0, T_RETURN);
+        stab_add("ARRAY", 0, T_ARRAY);
+
+        stab_add("OF", 0, T_OF);
+        stab_add("POINTER", 0, T_POINTER);
+        stab_add("TO", 0, T_TO);
+        stab_add("INC", 0, T_INC);
+        stab_add("DEC", 0, T_DEC);
+        stab_add("BREAK", 0, T_BREAK);
+        stab_add("CONTINUE", 0, T_CONTINUE);
+        stab_add("Adr", 0, T_ADR);
+
+        stab_add("OR", 0, T_OR);
+        stab_add("DIV", 0, T_DIV);
+        stab_add("MOD", 0, T_MOD);
+        stab_add("TRUE", 0, T_NUMBER);
+        stab_add("FALSE", 0, T_NUMBER);
+        stab_add("SHL", 0, T_SHL);
+        stab_add("SHR", 0, T_SHR);
+        stab_add("NIL", 0, T_NUMBER);
+    */
     translate();
 
     fclose(fin);
