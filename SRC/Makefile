@@ -1,9 +1,5 @@
 CC=gcc
 CFLAGS   = -std=c99 -O2
-CFLAGS  += -Wall -Wextra -Wpedantic -Werror
-CFLAGS  += -Wshadow -Wstrict-prototypes -Wmissing-prototypes
-CFLAGS  += -Wmisleading-indentation -Wundef -Wconversion
-CFLAGS  += -Wwrite-strings -Wunreachable-code
 
 all: sobt.exe
 

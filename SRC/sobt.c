@@ -891,7 +891,9 @@ void translate(char *src) {
     }
 
     if(isLex(T_BEGIN)) {
-        fprintf(fc, "\nvoid mod_%s_init() {\n", modName);
+        fprintf(fc, "\nstatic char is_%s_init = 0;\n", modName);
+        fprintf(fc, "void mod_%s_init() {\n", modName);
+        fprintf(fc, "if(is_%s_init) {\nreturn;\n}\nis_%s_init = 1;\n", modName, modName);
         stat_seq();
         emit("}\n");
         fprintf(fh, "\nextern void mod_%s_init();\n", modName);
