@@ -2,10 +2,8 @@
  Small Oberon to C99 Translator (Refactored)
 
  Original by DosWorld (CC0 1.0).
- Refactored to look up tokens/keywords via Symbol Table.
- Refactored procedure declaration parsing.
- Refactored Built-in Types to use Symbol Table.
- Fixed Recursion and Type Parsing logic.
+ To view a copy of this mark,
+ visit https://creativecommons.org/publicdomain/zero/1.0/
 */
 
 #include <stdio.h>
