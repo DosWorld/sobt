@@ -4,6 +4,7 @@
  Original by DosWorld (CC0 1.0).
  To view a copy of this mark,
  visit https://creativecommons.org/publicdomain/zero/1.0/
+ 
 */
 
 #include <stdio.h>
@@ -87,6 +88,9 @@
 #define T_SEMICOL   86 /* ; */
 #define T_DOT       87 /* . */
 #define T_EOF       99
+#define T_NIL       100
+#define T_TRUE      101
+#define T_FALSE     102
 
 /* -- Symbol Table Types -- */
 #define T_SYM_THISMOD  200
@@ -115,6 +119,15 @@ char outNameC[MAX_FNAME_LEN];
 char outNameHeader[MAX_FNAME_LEN];
 
 int isGlobalDef;
+
+char g_procName[MAX_ID_LEN];
+char g_argList[4096];
+char g_oneArg[MAX_TYPE_LEN + MAX_ID_LEN * 2];
+char g_retPre[MAX_TYPE_LEN];
+char g_retSuf[MAX_TYPE_LEN]; 
+char g_pPre[MAX_TYPE_LEN];
+char g_pSuf[MAX_TYPE_LEN];
+char g_idBuf[MAX_ID_LEN];
 
 /* -- Symbol Table Data -- */
 int stab[STAB_SIZE];
@@ -146,6 +159,8 @@ void cleanup_files() {
 void error(const char *msg) {
     printf("%s:%d: %s\n", sourceFileName, curLine, msg);
     cleanup_files();
+    remove(outNameC);
+    remove(outNameHeader);
     exit(1);
 }
 
@@ -261,15 +276,21 @@ void next(void) {
             cch = fgetc(fin);
         }
         ctoken[i] = 0;
-
         symbol = T_IDENT;
 
         if (stab_find(ctoken)) {
             if (stab_ftype < 200) {
                 symbol = stab_ftype;
-                if (strcmp(ctoken, "TRUE") == 0) strcpy(ctoken, "1");
-                else if (strcmp(ctoken, "FALSE") == 0) strcpy(ctoken, "0");
-                else if (strcmp(ctoken, "NIL") == 0) strcpy(ctoken, "NULL");
+                if (symbol == T_TRUE) {
+                    symbol = T_NUMBER;
+                    strcpy(ctoken, "1");
+                } else if (symbol == T_FALSE) {
+                    symbol = T_NUMBER;
+                    strcpy(ctoken, "0");
+                } else if (symbol == T_NIL) {
+                    symbol = T_NUMBER;
+                    strcpy(ctoken, "NULL");
+                }
             }
         }
         return;
@@ -731,22 +752,19 @@ void var_decl(void) {
 }
 
 void parse_proc_decl(int *saved_stab_ptr, int *saved_nbuf_ptr) {
-    char procName[MAX_ID_LEN];
-    char argList[4096];
-    char oneArg[MAX_TYPE_LEN + MAX_ID_LEN * 2];
-
-    char retPre[MAX_TYPE_LEN] = "void", retSuf[MAX_TYPE_LEN] = "";
-    char pPre[MAX_TYPE_LEN], pSuf[MAX_TYPE_LEN];
-    char idBuf[MAX_ID_LEN];
+    /* Using globals g_... defined at top to save stack */
     int exp = 0, i;
     int start_stab;
 
-    argList[0] = 0;
+    g_argList[0] = 0;
+    g_retPre[0] = 0; 
+    g_retSuf[0] = 0;
+    strcpy(g_retPre, "void");
 
-    consume_id(procName);
+    consume_id(g_procName);
     exp = isLex(T_MUL);
 
-    stab_add(procName, 0, T_SYM_PROC);
+    stab_add(g_procName, 0, T_SYM_PROC);
 
     *saved_stab_ptr = stab_ptr;
     *saved_nbuf_ptr = stab_nbuf_ptr;
@@ -760,33 +778,33 @@ void parse_proc_decl(int *saved_stab_ptr, int *saved_nbuf_ptr) {
 
                 start_stab = stab_ptr;
                 do {
-                    consume_id(idBuf);
-                    if (stab_find(idBuf)) error("Duplicate parameter");
-                    stab_add(idBuf, 0, T_SYM_PARAM);
+                    consume_id(g_idBuf);
+                    if (stab_find(g_idBuf)) error("Duplicate parameter");
+                    stab_add(g_idBuf, 0, T_SYM_PARAM);
                 } while (isLex(T_COMMA));
 
                 match(T_COLON, ": expected");
-                parse_type(pPre, pSuf);
+                parse_type(g_pPre, g_pSuf);
 
                 for (i = start_stab; i < stab_ptr; i++) {
-                    if (strlen(argList) > 0) strcat(argList, ", ");
-                    print_var(oneArg, &stab_nbuf[stab[i]], pPre, pSuf);
-                    strcat(argList, oneArg);
+                    if (strlen(g_argList) > 0) strcat(g_argList, ", ");
+                    print_var(g_oneArg, &stab_nbuf[stab[i]], g_pPre, g_pSuf);
+                    strcat(g_argList, g_oneArg);
                 }
             } while (isLex(T_SEMICOL));
         }
         match(T_RPAREN, ") expected");
     }
 
-    if (strlen(argList) == 0) strcpy(argList, "void");
+    if (strlen(g_argList) == 0) strcpy(g_argList, "void");
 
     if (isLex(T_COLON)) {
-        parse_type(retPre, retSuf);
+        parse_type(g_retPre, g_retSuf);
     }
     match(T_SEMICOL, "; expected");
 
-    fprintf(fc, "\n%s%s %s_%s(%s)%s", exp ? "" : "static ", retPre, modName, procName, argList, retSuf);
-    if (exp) fprintf(fh, "extern %s %s_%s(%s)%s;\n", retPre, modName, procName, argList, retSuf);
+    fprintf(fc, "\n%s%s %s_%s(%s)%s", exp ? "" : "static ", g_retPre, modName, g_procName, g_argList, g_retSuf);
+    if (exp) fprintf(fh, "extern %s %s_%s(%s)%s;\n", g_retPre, modName, g_procName, g_argList, g_retSuf);
     emit(" {\n");
 }
 
@@ -826,7 +844,7 @@ void const_decl(void) {
     }
 }
 
-void translate(char *src) {
+void module(char *src) {
     char *dot;
     int len;
 
@@ -867,11 +885,11 @@ void translate(char *src) {
     stab_add("OR", 0, T_OR);
     stab_add("DIV", 0, T_DIV);
     stab_add("MOD", 0, T_MOD);
-    stab_add("TRUE", 0, T_NUMBER);
-    stab_add("FALSE", 0, T_NUMBER);
+    stab_add("TRUE", 0, T_TRUE);
+    stab_add("FALSE", 0, T_FALSE);
     stab_add("SHL", 0, T_SHL);
     stab_add("SHR", 0, T_SHR);
-    stab_add("NIL", 0, T_NUMBER);
+    stab_add("NIL", 0, T_NIL);
 
     stab_add("INTEGER", 0, T_TYPE_INT);
     stab_add("LONGINT", 0, T_TYPE_LONG);
@@ -936,14 +954,14 @@ void translate(char *src) {
         }
     }
 
+    fprintf(fc, "\nstatic char is_%s_init = 0;\n", modName);
+    fprintf(fc, "void mod_%s_init() {\n", modName);
+    fprintf(fc, "if(is_%s_init) {\nreturn;\n}\nis_%s_init = 1;\n", modName, modName);
     if(isLex(T_BEGIN)) {
-        fprintf(fc, "\nstatic char is_%s_init = 0;\n", modName);
-        fprintf(fc, "void mod_%s_init() {\n", modName);
-        fprintf(fc, "if(is_%s_init) {\nreturn;\n}\nis_%s_init = 1;\n", modName, modName);
         stmt_seq();
-        emit("}\n");
-        fprintf(fh, "\nextern void mod_%s_init();\n", modName);
     }
+    emit("}\n");
+    fprintf(fh, "\nextern void mod_%s_init();\n", modName);
 
     match(T_END, "END expected");
     match(T_IDENT, "Identifier expected");
@@ -961,12 +979,10 @@ int main(int argc, char **argv) {
         return 1;
     }
     for(i = 1; i < argc; i++) {
-        if (strlen(argv[i]) >= MAX_FNAME_LEN) {
-            printf("Error: Filename %s is too long\n", argv[i]);
-            return 1;
-        }
-        if(argv[i][0] != '-') {
-            translate(argv[i]);
+        if (strlen(argv[i]) < MAX_FNAME_LEN) {
+            if(argv[i][0] != '-') {
+                module(argv[i]);
+            }
         }
     }
     return 0;

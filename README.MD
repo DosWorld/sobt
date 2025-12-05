@@ -5,7 +5,7 @@ of the **Oberon** programming language (Small Oberon) into **C99**.
 
 This project is written in strictly portable C (no structs,
 no enums, minimal dependencies) and is designed to be easily
-used for bootstrapping, retro/embedded programming.
+used for retro/embedded programming or bootstrapping.
 
 ## Features
 
