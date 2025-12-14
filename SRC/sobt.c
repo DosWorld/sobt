@@ -4,7 +4,7 @@
  Original by DosWorld (CC0 1.0).
  To view a copy of this mark,
  visit https://creativecommons.org/publicdomain/zero/1.0/
- 
+
 */
 
 #include <stdio.h>
@@ -124,7 +124,7 @@ char g_procName[MAX_ID_LEN];
 char g_argList[4096];
 char g_oneArg[MAX_TYPE_LEN + MAX_ID_LEN * 2];
 char g_retPre[MAX_TYPE_LEN];
-char g_retSuf[MAX_TYPE_LEN]; 
+char g_retSuf[MAX_TYPE_LEN];
 char g_pPre[MAX_TYPE_LEN];
 char g_pSuf[MAX_TYPE_LEN];
 char g_idBuf[MAX_ID_LEN];
@@ -179,12 +179,6 @@ int isLex(int s) {
 
 void emit(const char *s) {
     fprintf(fc, "%s", s);
-}
-
-void consume_id(char *buf) {
-    strncpy(buf, ctoken, MAX_ID_LEN - 1);
-    buf[MAX_ID_LEN - 1] = '\0';
-    match(T_IDENT, "Identifier expected");
 }
 
 const char* get_op_str(int t) {
@@ -248,6 +242,7 @@ int stab_find(char *name) {
             stab_fname = &stab_nbuf[stab[i]];
             stab_fid = stab_id[i];
             stab_ftype = stab_type[i];
+            stab_finded = i;
             return 1;
         }
     }
@@ -347,7 +342,6 @@ void next(void) {
         cch = fgetc(fin);
         if (cch == '*') {
             cch = fgetc(fin);
-            /* Nested comments support */
             level = 1;
             while (level > 0 && cch != EOF) {
                 if (cch == '(') {
@@ -450,33 +444,39 @@ void next(void) {
     }
 }
 
-void designator(void) {
-    char name[MAX_ID_LEN];
-    consume_id(name);
+void consume_id(char *buf) {
+    strncpy(buf, ctoken, MAX_ID_LEN - 1);
+    buf[MAX_ID_LEN - 1] = '\0';
+    match(T_IDENT, "Identifier expected");
+}
 
-    if (isLex(T_DOT)) {
-        if (symbol != T_IDENT) error("Field identifier expected");
-        fprintf(fc, "%s_%s", name, ctoken);
-        next();
-    } else {
-        fprintf(fc, "%s_%s", modName, name);
+void designator(void) {
+    char mname[MAX_ID_LEN];
+    char name[MAX_ID_LEN];
+
+    strcpy(mname, modName);
+
+    if(stab_ftype == T_SYM_AMOD) {
+        stab_finded = stab_id[stab_finded];
+        stab_fname = &stab_nbuf[stab[stab_finded]];
+        stab_ftype = stab_type[stab_finded];
     }
 
-    while (1) {
-        if(isLex(T_LBRACK)) {
-            emit("[");
-            expr();
-            match(T_RBRACK, "] expected");
-            emit("]");
-        } else if (isLex(T_DOT)) {
-            emit(".");
-            emit(ctoken);
-            match(T_IDENT, "Ident expected");
-        } else if (symbol == T_LPAREN) {
-            break;
-        } else {
-            break;
-        }
+    if((stab_ftype == T_SYM_THISMOD) || (stab_ftype == T_SYM_IMOD)) {
+        strcpy(mname, stab_fname);
+        match(T_IDENT, "module name expected");
+        match(T_DOT, ". expected");
+    }
+
+    consume_id(name);
+
+    fprintf(fc, "%s_%s", mname, name);
+
+    if(isLex(T_LBRACK)) {
+        emit("[");
+        expr();
+        match(T_RBRACK, "] expected");
+        emit("]");
     }
 }
 
@@ -744,7 +744,6 @@ void var_decl(void) {
                     fprintf(fc, "static %s;\n", declBuf);
                 }
             } else {
-                /* Local variable */
                 fprintf(fc, "%s;\n", declBuf);
             }
         }
@@ -752,12 +751,11 @@ void var_decl(void) {
 }
 
 void parse_proc_decl(int *saved_stab_ptr, int *saved_nbuf_ptr) {
-    /* Using globals g_... defined at top to save stack */
     int exp = 0, i;
     int start_stab;
 
     g_argList[0] = 0;
-    g_retPre[0] = 0; 
+    g_retPre[0] = 0;
     g_retSuf[0] = 0;
     strcpy(g_retPre, "void");
 
@@ -844,10 +842,8 @@ void const_decl(void) {
     }
 }
 
-void module(char *src) {
-    char *dot;
-    int len;
 
+void mod_init() {
     curLine = 1;
     isGlobalDef = 0;
 
@@ -899,6 +895,14 @@ void module(char *src) {
     stab_add("CHAR", 0, T_TYPE_CHAR);
 
     fin = fh = fc = NULL;
+}
+
+void module(char *src) {
+    char *dot;
+    int len;
+    int modId, modAliasId;
+
+    mod_init();
 
     strcpy(sourceFileName, src);
     fin = fopen(sourceFileName, "r");
@@ -932,9 +936,16 @@ void module(char *src) {
     while (isLex(T_IMPORT)) {
         do {
             if (symbol == T_IDENT) {
-                fprintf(fc, "#include \"%s.h\"\n", ctoken);
-                stab_add(ctoken, 0, T_SYM_IMOD);
+                modId = stab_add(ctoken, 0, T_SYM_IMOD);
                 next();
+                if(isLex(T_ASSIGN)) {
+                    modAliasId = modId;
+                    modId = stab_add(ctoken, 0, T_SYM_IMOD);
+                    stab_type[modAliasId] = T_SYM_AMOD;
+                    stab_id[modAliasId] = modId;
+                    match(T_IDENT, "module name expected");
+                }
+                fprintf(fc, "#include \"%s.h\"\n", stab_nbuf[stab[modId]]);
             }
         } while (isLex(T_COMMA));
         match(T_SEMICOL, "; expected");

@@ -22,13 +22,17 @@ used for retro/embedded programming or bootstrapping.
 Compile the translator with any standard C compiler:
 
 ```bash
-gcc -o sobt sobt.c
+        wcl -ml sobt.c -fe=sobt.exe
 ```
 
 or
 
 ```bash
-wcl sobt.c
+        wcl386 sobt.c -bt=nt -bcl=nt -fe=sobt32.exe
+```
+
+```bash
+gcc -o sobt sobt.c
 ```
 
 ## Usage
