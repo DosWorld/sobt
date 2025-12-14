@@ -18,15 +18,29 @@ Cap(s) replaces each lower case letter within s by its upper case equivalent.
 *)
 PROCEDURE Length*(s: POINTER TO CHAR): INTEGER;
 BEGIN
+(*{ return strlen(Strings_s); *)
 END Length;
+
+PROCEDURE Append*(extra: POINTER TO CHAR; dest: POINTER TO CHAR);
+BEGIN
+(*{ strcat(Strings_dest, Strings_extra); *)
+END Append;
+
+PROCEDURE Compare*(s1 , s2: POINTER TO CHAR) : INTEGER;
+BEGIN
+(*{ return strcmp(Strings_s1, Strings_s2); *)
+END Compare;
+
+PROCEDURE Copy*(source: POINTER TO CHAR; dest: POINTER TO CHAR);
+BEGIN
+(*{ strcpy(Strings_dest, Strings_source); *)
+END Copy;
+
+(*
 
 PROCEDURE Insert*(source: POINTER TO CHAR; pos: INTEGER;  dest: POINTER TO CHAR);
 BEGIN
 END Insert;
-
-PROCEDURE Append*(extra: POINTER TO CHAR; dest: POINTER TO CHAR);
-BEGIN
-END Append;
 
 PROCEDURE Delete*(s: POINTER TO CHAR; pos, n: INTEGER);
 BEGIN
@@ -47,5 +61,7 @@ END Pos;
 PROCEDURE Cap*(s: POINTER TO CHAR);
 BEGIN
 END Cap;
+
+*)
 
 END Strings.

@@ -1,5 +1,44 @@
 MODULE Files;
 
+(*{ #include <stdio.h> *)
+
+PROCEDURE Old (name: POINTER TO CHAR): POINTER;
+BEGIN
+(*{ return fopen(Files_name, "rb"); *)
+END Old;
+
+PROCEDURE New (name: POINTER TO CHAR): POINTER;
+BEGIN
+(*{ return fopen(Files_name, "rwb"); *)
+END New;
+
+PROCEDURE BlockRead(f : POINTER; buf : POINTER; count : INTEGER): INTEGER;
+BEGIN
+(*{  return fread(Files_buf, 1, Files_count, Files_f); *)
+END BlockRead;
+
+PROCEDURE BlockWrite(f : POINTER; buf : POINTER; count : INTEGER): INTEGER;
+BEGIN
+(*{  return fwrite(Files_buf, 1, Files_count, Files_f); *)
+END BlockWrite;
+
+PROCEDURE Close (f: POINTER);
+BEGIN
+(*{ fclose(Files_f); *)
+END Close;
+
+
+PROCEDURE Seek(f : POINTER; ofs : LONGINT);
+BEGIN
+(*{  fseek(f, ofs, SEEK_SET); *)
+END Seek;
+
+
+PROCEDURE Pos(f : POINTER) : LONGINT;
+BEGIN
+(*{  return ftell(f); *)
+END Pos;
+
 (*
 PROCEDURE Old (name: ARRAY OF CHAR): File;
 PROCEDURE New (name: ARRAY OF CHAR): File;

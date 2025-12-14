@@ -1,13 +1,19 @@
 MODULE In;
 
+(*{ #include <stdio.h> *)
+
 VAR Done*: BOOLEAN;
 
 PROCEDURE Open*;
 BEGIN
+    Done := FALSE;
 END Open;
 
 PROCEDURE Char*(p : POINTER TO CHAR);
 BEGIN
+(*{
+*In_p = getc();
+*)
 END Char;
 
 (*
