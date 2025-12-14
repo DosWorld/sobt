@@ -1,9 +1,12 @@
-CC=gcc
-CFLAGS   = -std=c99 -O2
+all: sobt.exe sobt32.exe
+	copy sobt.exe ..\BIN
+	copy sobt32.exe ..\BIN
 
-all: sobt.exe
+test.c: sobt.exe
+        ./sobt.exe test.mod
 
-test: sobt.exe
-	./sobt.exe test.mod
 sobt.exe: sobt.c
-	$(CC) $(CFLAGS) sobt.c -o sobt.exe
+        wcl -ml sobt.c -fe=sobt.exe
+
+sobt32.exe: sobt.c
+        wcl386 sobt.c -bt=nt -bcl=nt -fe=sobt32.exe

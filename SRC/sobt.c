@@ -88,7 +88,7 @@
 #define T_SEMICOL   86 /* ; */
 #define T_DOT       87 /* . */
 #define T_EOF       99
-#define T_NIL       100
+#define T_NIL       103
 #define T_TRUE      101
 #define T_FALSE     102
 
