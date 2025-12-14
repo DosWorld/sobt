@@ -10,7 +10,7 @@ VAR Done*: BOOLEAN;
 
 PROCEDURE Open*;
 BEGIN
-    Done := FALSE;
+    Done := TRUE;
 END Open;
 
 PROCEDURE Char*(p : POINTER TO CHAR);
