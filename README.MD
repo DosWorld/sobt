@@ -32,7 +32,7 @@ or
 ```
 
 ```bash
-gcc -o sobt sobt.c
+        gcc -o sobt sobt.c
 ```
 
 ## Usage
@@ -82,7 +82,7 @@ Test_Add((10));
 }
 ```
 
-**Generated H (`Test.h`):**
+**Generated header (`Test.h`):**
 ```c
 #ifndef Test_H
 #define Test_H
@@ -99,7 +99,6 @@ extern void mod_Test_init();
 
 *   **Arrays:** Supports single-dimensional arrays only (`ARRAY 10 OF INTEGER`).
 *   **Records:** No support for `RECORD` types (structs).
-*   **Syntax:** Strict Oberon subset; expects well-formatted input.
 
 ## License
 

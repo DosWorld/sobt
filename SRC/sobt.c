@@ -12,12 +12,14 @@
 #include <string.h>
 #include <ctype.h>
 
+/* -- Configuration & Limits -- */
 #define MAXIDLEN      64
 #define MAXTYPELEN    32
 #define MAXFNAMELEN   256
-#define STABSIZE      512
+#define STABSIZE       512
 #define STABBUFSIZE   (16 * 1024)
 
+/* -- Tokens -- */
 #define TNULL      0
 #define TMODULE    1
 #define TBEGIN     2
@@ -98,6 +100,7 @@
 #define TSYMGEVAR    303
 #define TSYMPARAM    304
 
+/* -- Globals -- */
 FILE *fin = NULL;
 FILE *fc = NULL;
 FILE *fh = NULL;
@@ -135,6 +138,7 @@ int stab_ptr;
 char stab_nbuf[STABBUFSIZE];
 int stab_nbuf_ptr;
 
+/* -- Forward Declarations -- */
 void next(void);
 void expr(void);
 void stmt_seq(void);
@@ -175,37 +179,37 @@ void emit(const char *s) {
 }
 
 const char* get_op_str(int t) {
-    switch(t) {
-    case TASSIGN:
+    if (t == TASSIGN) {
         return " = ";
-    case TEQ:
+    } else if (t == TEQ) {
         return " == ";
-    case TNEQ:
+    } else if (t == TNEQ) {
         return " != ";
-    case TLT:
+    } else if (t == TLT) {
         return " < ";
-    case TLTE:
+    } else if (t == TLTE) {
         return " <= ";
-    case TGT:
+    } else if (t == TGT) {
         return " > ";
-    case TGTE:
+    } else if (t == TGTE) {
         return " >= ";
-    case TPLUS:
+    } else if (t == TPLUS) {
         return " + ";
-    case TMINUS:
+    } else if (t == TMINUS) {
         return " - ";
-    case TOR:
+    } else if (t == TOR) {
         return " || ";
-    case TMUL:
+    } else if (t == TMUL) {
         return " * ";
-    case TDIV:
+    } else if (t == TDIV) {
         return " / ";
-    case TMOD:
+    } else if (t == TMOD) {
         return " % ";
-    case TAND:
+    } else if (t == TAND) {
         return " && ";
+    } else {
+        return NULL;
     }
-    return NULL;
 }
 
 /* -- Symbol Table Functions -- */
@@ -326,8 +330,7 @@ void next(void) {
     }
 
     /* Symbols */
-    switch (cch) {
-    case '(':
+    if (cch == '(') {
         cch = fgetc(fin);
         if (cch == '*') {
             cch = fgetc(fin);
@@ -353,80 +356,67 @@ void next(void) {
             return;
         }
         symbol = TLPAREN;
-        break;
-    case ')':
+    } else if (cch == ')') {
         cch = fgetc(fin);
         symbol = TRPAREN;
-        break;
-    case '[':
+    } else if (cch == '[') {
         cch = fgetc(fin);
         symbol = TLBRACK;
-        break;
-    case ']':
+    } else if (cch == ']') {
         cch = fgetc(fin);
         symbol = TRBRACK;
-        break;
-    case ';':
+    } else if (cch == ';') {
         cch = fgetc(fin);
         symbol = TSEMICOL;
-        break;
-    case ',':
+    } else if (cch == ',') {
         cch = fgetc(fin);
         symbol = TCOMMA;
-        break;
-    case '.':
+    } else if (cch == '.') {
         cch = fgetc(fin);
         symbol = TDOT;
-        break;
-    case '=':
+    } else if (cch == '=') {
         cch = fgetc(fin);
         symbol = TEQ;
-        break;
-    case '#':
+    } else if (cch == '#') {
         cch = fgetc(fin);
         symbol = TNEQ;
-        break;
-    case '+':
+    } else if (cch == '+') {
         cch = fgetc(fin);
         symbol = TPLUS;
-        break;
-    case '-':
+    } else if (cch == '-') {
         cch = fgetc(fin);
         symbol = TMINUS;
-        break;
-    case '*':
+    } else if (cch == '*') {
         cch = fgetc(fin);
         symbol = TMUL;
-        break;
-    case '&':
+    } else if (cch == '&') {
         cch = fgetc(fin);
         symbol = TAND;
-        break;
-    case ':':
+    } else if (cch == ':') {
         cch = fgetc(fin);
         if (cch == '=') {
             cch = fgetc(fin);
             symbol = TASSIGN;
+        } else {
+            symbol = TCOLON;
         }
-        else symbol = TCOLON;
-        break;
-    case '<':
+    } else if (cch == '<') {
         cch = fgetc(fin);
         if (cch == '=') {
             cch = fgetc(fin);
             symbol = TLTE;
+        } else {
+            symbol = TLT;
         }
-        else symbol = TLT;
-        break;
-    case '>':
+    } else if (cch == '>') {
         cch = fgetc(fin);
         if (cch == '=') {
             cch = fgetc(fin);
             symbol = TGTE;
+        } else {
+            symbol = TGT;
         }
-        else symbol = TGT;
-        break;
-    default:
+    } else {
         printf("Lexer error: Unknown char '%c'\n", cch);
         cleanup_files();
         exit(1);
