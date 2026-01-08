@@ -28,4 +28,9 @@ BEGIN
 (*{ _argc = num; _argv = p; *)
 END Init;
 
+PROCEDURE Halt*(num : INTEGER);
+BEGIN
+(*{ exit(1); *)
+END Init;
+
 END Os.

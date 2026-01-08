@@ -1,10 +1,9 @@
 /*
- Small Oberon to C99 Translator (Refactored)
+ Small Oberon to C99 Translator
 
  Original by DosWorld (CC0 1.0).
  To view a copy of this mark,
  visit https://creativecommons.org/publicdomain/zero/1.0/
-
 */
 
 #include <stdio.h>
@@ -13,11 +12,11 @@
 #include <ctype.h>
 
 /* -- Configuration & Limits -- */
-#define MAXIDLEN      64
+#define MAXIDLEN      32
 #define MAXTYPELEN    32
 #define MAXFNAMELEN   256
 #define STABSIZE       512
-#define STABBUFSIZE   (16 * 1024)
+#define STABBUFSIZE   (8 * 1024)
 
 /* -- Tokens -- */
 #define TNULL      0
@@ -54,6 +53,16 @@
 #define TTYPEBOOL     104
 #define TTYPECHAR     105
 
+/* -- Standard Functions (110+) -- */
+#define TFABS         110
+#define TFODD         111
+#define TFASH         112
+#define TFASSERT      113
+#define TFORD         114
+#define TFCHR         115
+#define TFFLOOR       116
+
+/* -- Literals -- */
 #define TIDENT     50
 #define TNUMBER    51
 #define TCHAR      52
@@ -75,7 +84,9 @@
 #define TDIV       74 /* DIV */
 #define TMOD       75 /* MOD */
 #define TAND       76 /* & */
+#define TNOT       77 /* ~ */
 
+/* -- Delimiters -- */
 #define TLPAREN    80 /* ( */
 #define TRPAREN    81 /* ) */
 #define TLBRACK    82 /* [ */
@@ -101,84 +112,101 @@
 #define TSYMPARAM    304
 
 /* -- Globals -- */
-FILE *fin = NULL;
-FILE *fc = NULL;
-FILE *fh = NULL;
+FILE *fileIn = NULL;
+FILE *fileC = NULL;
+FILE *fileHeader = NULL;
 
-int curLine = 1;
-int cch;
-int symbol = 0;
-char ctoken[MAXIDLEN];
-char modName[MAXIDLEN];
+char *captureBuffer = NULL;
+
+int currentLine = 1;
+int currentChar;
+int currentSymbol = 0;
+char currentToken[MAXIDLEN];
+char moduleName[MAXIDLEN];
 
 char sourceFileName[MAXFNAMELEN];
-char outNameC[MAXFNAMELEN];
-char outNameHeader[MAXFNAMELEN];
+char outputNameC[MAXFNAMELEN];
+char outputNameHeader[MAXFNAMELEN];
 
-int isGlobalDef;
+int isGlobalDefinition;
 
-char g_procName[MAXIDLEN];
-char g_argList[4096];
-char g_oneArg[MAXTYPELEN + MAXIDLEN * 2];
-char g_retPre[MAXTYPELEN];
-char g_retSuf[MAXTYPELEN];
-char g_pPre[MAXTYPELEN];
-char g_pSuf[MAXTYPELEN];
-char g_idBuf[MAXIDLEN];
+char globalProcName[MAXIDLEN];
+char globalArgList[4096];
+char globalOneArg[MAXTYPELEN + MAXIDLEN * 2];
+char globalRetPrefix[MAXTYPELEN];
+char globalRetSuffix[MAXTYPELEN];
+char globalParamPrefix[MAXTYPELEN];
+char globalParamSuffix[MAXTYPELEN];
+char globalIdBuffer[MAXIDLEN];
 
 /* -- Symbol Table Data -- */
-int stab[STABSIZE];
-int stab_type[STABSIZE];
-int stab_id[STABSIZE];
+int symbolTable[STABSIZE];
+int symbolTableType[STABSIZE];
+int symbolTableId[STABSIZE];
+int symbolTableDataType[STABSIZE]; /* Stores Type ID */
 
-int stab_finded, stab_fid, stab_ftype;
-char *stab_fname;
+/* -- Type System Data (Parallel Arrays) -- */
+/* 0=Undef, 1=Int, 2=Long, 3=Real, 4=Dbl, 5=Bool, 6=Char, 7=Array, 8=Ptr */
+int typeForm[STABSIZE];
+int typeBase[STABSIZE];
+int typeLen[STABSIZE];
+int typesPtr = 10;
 
-int stab_ptr;
-char stab_nbuf[STABBUFSIZE];
-int stab_nbuf_ptr;
+int symbolTableFoundIndex, symbolTableFoundId, symbolTableFoundType;
+char *symbolTableFoundName;
+
+int symbolTablePtr;
+char symbolTableNameBuffer[STABBUFSIZE];
+int symbolTableNameBufferPtr;
 
 /* -- Forward Declarations -- */
-void next(void);
-void expr(void);
-void stmt_seq(void);
-void parse_type(char *prefix, char *suffix);
+void nextToken(void);
+int parseExpression(void);
+void parseStatementSequence(void);
+int parseType(char *prefix, char *suffix);
+int parseDesignator(void);
+int parseBasicType(char *prefix, char *suffix);
+int parseSimpleExpression(void);
 
 /* -- Utility Functions -- */
 
-void cleanup_files() {
-    if (fc) fclose(fc);
-    if (fh) fclose(fh);
-    if (fin) fclose(fin);
-    fc = fh = fin = NULL;
+void cleanupFiles() {
+    if (fileC) fclose(fileC);
+    if (fileHeader) fclose(fileHeader);
+    if (fileIn) fclose(fileIn);
+    fileC = fileHeader = fileIn = NULL;
 }
 
-void error(const char *msg) {
-    printf("%s:%d: %s\n", sourceFileName, curLine, msg);
-    cleanup_files();
-    remove(outNameC);
-    remove(outNameHeader);
+void fatalError(const char *msg) {
+    printf("%s:%d: %s\n", sourceFileName, currentLine, msg);
+    cleanupFiles();
+    remove(outputNameC);
+    remove(outputNameHeader);
     exit(1);
 }
 
-void match(int s, const char *msg) {
-    if (symbol == s) next();
-    else error(msg);
+void matchSymbol(int s, const char *msg) {
+    if (currentSymbol == s) nextToken();
+    else fatalError(msg);
 }
 
-int isLex(int s) {
-    if (symbol == s) {
-        next();
+int checkLexeme(int s) {
+    if (currentSymbol == s) {
+        nextToken();
         return 1;
     }
     return 0;
 }
 
-void emit(const char *s) {
-    fprintf(fc, "%s", s);
+void emitCode(const char *s) {
+    if (captureBuffer != NULL) {
+        strcat(captureBuffer, s);
+    } else {
+        fprintf(fileC, "%s", s);
+    }
 }
 
-const char* get_op_str(int t) {
+const char* getOperatorString(int t) {
     if (t == TASSIGN) {
         return " = ";
     } else if (t == TEQ) {
@@ -212,30 +240,52 @@ const char* get_op_str(int t) {
     }
 }
 
-/* -- Symbol Table Functions -- */
+/* -- Type Checking -- */
+void checkTypeCompatibility(int t1, int t2) {
+    if (t1 == 0 || t2 == 0) return; /* Skip check for undefined/void types */
+    if (t1 == t2) return;
 
-int stab_add(char *name, int sid, int stype) {
-    if (stab_ptr >= STABSIZE) error("Symbol table full");
-    if (stab_nbuf_ptr + strlen(name) + 1 >= STABBUFSIZE) error("Symbol table name buffer full");
+    /* Allow mixing Integer and Long */
+    if ((t1 == 1 || t1 == 2) && (t2 == 1 || t2 == 2)) return;
 
-    stab[stab_ptr] = stab_nbuf_ptr;
-    strcpy(&stab_nbuf[stab_nbuf_ptr], name);
-    stab_nbuf_ptr += strlen(name) + 1;
-    stab_type[stab_ptr] = stype;
-    stab_id[stab_ptr] = sid;
-    stab_ptr++;
-    return stab_ptr - 1;
+    /* Allow mixing Real and Double */
+    if ((t1 == 3 || t1 == 4) && (t2 == 3 || t2 == 4)) return;
+
+    /* Allow mixing Pointer and NIL (8 is Ptr, 0 is used for NIL context sometimes or specialized) */
+    /* Check actual forms */
+    if ((typeForm[t1] == 8) && (typeForm[t2] == 0)) return; /* Ptr = NULL */
+    if ((typeForm[t1] == 0) && (typeForm[t2] == 8)) return; /* NULL = Ptr */
+
+    /* Strict check for others */
+    printf("%s:%d: Type mismatch: %d != %d\n", sourceFileName, currentLine, t1, t2);
+    cleanupFiles();
+    exit(1);
 }
 
-int stab_find(char *name) {
-    /* Search backwards to handle scope shadowing correctly */
+/* -- Symbol Table Functions -- */
+
+int symbolTableAdd(char *name, int sid, int stype, int dtype) {
+    if (symbolTablePtr >= STABSIZE) fatalError("Symbol table full");
+    if (symbolTableNameBufferPtr + strlen(name) + 1 >= STABBUFSIZE) fatalError("Symbol table name buffer full");
+
+    symbolTable[symbolTablePtr] = symbolTableNameBufferPtr;
+    strcpy(&symbolTableNameBuffer[symbolTableNameBufferPtr], name);
+    symbolTableNameBufferPtr += strlen(name) + 1;
+    symbolTableType[symbolTablePtr] = stype;
+    symbolTableId[symbolTablePtr] = sid;
+    symbolTableDataType[symbolTablePtr] = dtype;
+    symbolTablePtr++;
+    return symbolTablePtr - 1;
+}
+
+int symbolTableFind(char *name) {
     int i;
-    for (i = stab_ptr - 1; i >= 0; i--) {
-        if (strcmp(&stab_nbuf[stab[i]], name) == 0) {
-            stab_fname = &stab_nbuf[stab[i]];
-            stab_fid = stab_id[i];
-            stab_ftype = stab_type[i];
-            stab_finded = i;
+    for (i = symbolTablePtr - 1; i >= 0; i--) {
+        if (strcmp(&symbolTableNameBuffer[symbolTable[i]], name) == 0) {
+            symbolTableFoundName = &symbolTableNameBuffer[symbolTable[i]];
+            symbolTableFoundId = symbolTableId[i];
+            symbolTableFoundType = symbolTableType[i];
+            symbolTableFoundIndex = i;
             return 1;
         }
     }
@@ -244,713 +294,990 @@ int stab_find(char *name) {
 
 /* -- Lexer -- */
 
-void next(void) {
-    int i = 0, q = 0, level = 0, isHex;
-    while (isspace(cch)) {
-        if (cch == '\n') curLine++;
-        cch = fgetc(fin);
+void nextToken(void) {
+    int i = 0, q = 0, level = 0, k;
+    while (isspace(currentChar)) {
+        if (currentChar == '\n') currentLine++;
+        currentChar = fgetc(fileIn);
     }
 
-    if (cch == EOF) {
-        symbol = TEOF;
+    if (currentChar == EOF) {
+        currentSymbol = TEOF;
         return;
     }
 
-    /* Identifiers, Keywords, and Types */
-    if (isalpha(cch)) {
+    /* Identifiers */
+    if (isalpha(currentChar)) {
         i = 0;
-        while (isalnum(cch)) {
-            if (i < MAXIDLEN - 1) ctoken[i++] = (char)cch;
-            cch = fgetc(fin);
+        while (isalnum(currentChar)) {
+            if (i < MAXIDLEN - 1) currentToken[i++] = (char)currentChar;
+            currentChar = fgetc(fileIn);
         }
-        ctoken[i] = 0;
-        symbol = TIDENT;
+        currentToken[i] = 0;
+        currentSymbol = TIDENT;
 
-        if (stab_find(ctoken)) {
-            if (stab_ftype < 200) {
-                symbol = stab_ftype;
-                if (symbol == TTRUE) {
-                    symbol = TNUMBER;
-                    strcpy(ctoken, "1");
-                } else if (symbol == TFALSE) {
-                    symbol = TNUMBER;
-                    strcpy(ctoken, "0");
-                } else if (symbol == TNIL) {
-                    symbol = TNUMBER;
-                    strcpy(ctoken, "NULL");
+        if (symbolTableFind(currentToken)) {
+            if (symbolTableFoundType < 200) {
+                currentSymbol = symbolTableFoundType;
+                if (currentSymbol == TTRUE) {
+                    currentSymbol = TNUMBER;
+                    strcpy(currentToken, "true");
+                } else if (currentSymbol == TFALSE) {
+                    currentSymbol = TNUMBER;
+                    strcpy(currentToken, "false");
+                } else if (currentSymbol == TNIL) {
+                    currentSymbol = TNUMBER;
+                    strcpy(currentToken, "NULL");
                 }
             }
         }
         return;
     }
 
-    /* Numbers (Dec/Hex) */
-    if (isdigit(cch) || cch == '$') {
-        isHex = (cch == '$');
-        if (isHex) cch = fgetc(fin);
+    /* Numbers (Dec/Hex/Real) */
+    if (isdigit(currentChar)) {
         i = 0;
-        if (isHex) {
-            if (i < MAXIDLEN - 2) {
-                ctoken[i++]='0';
-                ctoken[i++]='x';
+        while (isxdigit(currentChar)) {
+            if (i < MAXIDLEN - 1) currentToken[i++] = (char)currentChar;
+            currentChar = fgetc(fileIn);
+        }
+
+        if (currentChar == 'H') { /* Hex Integer */
+            currentChar = fgetc(fileIn);
+            currentToken[i] = 0;
+            if (i > MAXIDLEN - 3) i = MAXIDLEN - 3;
+            for (k = i; k >= 0; k--) currentToken[k + 2] = currentToken[k];
+            currentToken[0] = '0';
+            currentToken[1] = 'x';
+            currentSymbol = TNUMBER;
+            return;
+        }
+        else if (currentChar == 'X') { /* Hex Char */
+            currentChar = fgetc(fileIn);
+            currentToken[i] = 0;
+            if (i > MAXIDLEN - 3) i = MAXIDLEN - 3;
+            for (k = i; k >= 0; k--) currentToken[k + 2] = currentToken[k];
+            currentToken[0] = '0';
+            currentToken[1] = 'x';
+            currentSymbol = TCHAR;
+            return;
+        }
+        else if (currentChar == '.') { /* Real */
+            if (i < MAXIDLEN - 1) currentToken[i++] = (char)currentChar;
+            currentChar = fgetc(fileIn);
+            while (isdigit(currentChar)) {
+                if (i < MAXIDLEN - 1) currentToken[i++] = (char)currentChar;
+                currentChar = fgetc(fileIn);
+            }
+            if (currentChar == 'E' || currentChar == 'e') {
+                if (i < MAXIDLEN - 1) currentToken[i++] = (char)currentChar;
+                currentChar = fgetc(fileIn);
+                if (currentChar == '+' || currentChar == '-') {
+                    if (i < MAXIDLEN - 1) currentToken[i++] = (char)currentChar;
+                    currentChar = fgetc(fileIn);
+                }
+                if (!isdigit(currentChar)) {
+                    printf("Lexer error: Digit expected after exponent\n");
+                    cleanupFiles();
+                    exit(1);
+                }
+                while (isdigit(currentChar)) {
+                    if (i < MAXIDLEN - 1) currentToken[i++] = (char)currentChar;
+                    currentChar = fgetc(fileIn);
+                }
             }
         }
-        while ((isHex && isxdigit(cch)) || (!isHex && isdigit(cch))) {
-            if (i < MAXIDLEN - 1) ctoken[i++] = (char)cch;
-            cch = fgetc(fin);
-        }
-        if(!isHex && (cch == '.')) {
-            if (i < MAXIDLEN - 1) ctoken[i++] = (char)cch;
-            cch = fgetc(fin);
-            while (isdigit(cch)) {
-                if (i < MAXIDLEN - 1) ctoken[i++] = (char)cch;
-                cch = fgetc(fin);
-            }
-        }
-        ctoken[i] = 0;
-        symbol = TNUMBER;
+
+        currentToken[i] = 0;
+        currentSymbol = TNUMBER;
         return;
     }
 
     /* Strings / Chars */
-    if (cch == '"' || cch == '\'') {
-        q = cch;
+    if (currentChar == '"' || currentChar == '\'') {
+        q = currentChar;
         i = 0;
-        ctoken[i++] = (char)q;
-        cch = fgetc(fin);
-        while (cch != q && cch != EOF) {
-            if (i < MAXIDLEN - 2) ctoken[i++] = (char)cch;
-            cch = fgetc(fin);
+        currentToken[i++] = (char)q;
+        currentChar = fgetc(fileIn);
+        while (currentChar != q && currentChar != EOF) {
+            if (i < MAXIDLEN - 2) currentToken[i++] = (char)currentChar;
+            currentChar = fgetc(fileIn);
         }
-        if (cch == q) cch = fgetc(fin);
-        ctoken[i++] = (char)q;
-        ctoken[i] = '\0';
-        symbol = (q == '"') ? TSTRING : TCHAR;
+        if (currentChar == q) currentChar = fgetc(fileIn);
+        currentToken[i++] = (char)q;
+        currentToken[i] = '\0';
+        currentSymbol = (q == '"') ? TSTRING : TCHAR;
         return;
     }
 
     /* Symbols */
-    if (cch == '(') {
-        cch = fgetc(fin);
-        if (cch == '*') {
-            cch = fgetc(fin);
+    if (currentChar == '(') {
+        currentChar = fgetc(fileIn);
+        if (currentChar == '*') {
+            currentChar = fgetc(fileIn);
             level = 1;
-            while (level > 0 && cch != EOF) {
-                if (cch == '(') {
-                    cch = fgetc(fin);
-                    if (cch == '*') {
+            while (level > 0 && currentChar != EOF) {
+                if (currentChar == '(') {
+                    currentChar = fgetc(fileIn);
+                    if (currentChar == '*') {
                         level++;
-                        cch = fgetc(fin);
+                        currentChar = fgetc(fileIn);
                     }
-                } else if (cch == '*') {
-                    cch = fgetc(fin);
-                    if (cch == ')') {
+                } else if (currentChar == '*') {
+                    currentChar = fgetc(fileIn);
+                    if (currentChar == ')') {
                         level--;
-                        cch = fgetc(fin);
+                        currentChar = fgetc(fileIn);
                     }
                 } else {
-                    cch = fgetc(fin);
+                    currentChar = fgetc(fileIn);
                 }
             }
-            next();
+            nextToken();
             return;
         }
-        symbol = TLPAREN;
-    } else if (cch == ')') {
-        cch = fgetc(fin);
-        symbol = TRPAREN;
-    } else if (cch == '[') {
-        cch = fgetc(fin);
-        symbol = TLBRACK;
-    } else if (cch == ']') {
-        cch = fgetc(fin);
-        symbol = TRBRACK;
-    } else if (cch == ';') {
-        cch = fgetc(fin);
-        symbol = TSEMICOL;
-    } else if (cch == ',') {
-        cch = fgetc(fin);
-        symbol = TCOMMA;
-    } else if (cch == '.') {
-        cch = fgetc(fin);
-        symbol = TDOT;
-    } else if (cch == '=') {
-        cch = fgetc(fin);
-        symbol = TEQ;
-    } else if (cch == '#') {
-        cch = fgetc(fin);
-        symbol = TNEQ;
-    } else if (cch == '+') {
-        cch = fgetc(fin);
-        symbol = TPLUS;
-    } else if (cch == '-') {
-        cch = fgetc(fin);
-        symbol = TMINUS;
-    } else if (cch == '*') {
-        cch = fgetc(fin);
-        symbol = TMUL;
-    } else if (cch == '&') {
-        cch = fgetc(fin);
-        symbol = TAND;
-    } else if (cch == ':') {
-        cch = fgetc(fin);
-        if (cch == '=') {
-            cch = fgetc(fin);
-            symbol = TASSIGN;
+        currentSymbol = TLPAREN;
+    } else if (currentChar == ')') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TRPAREN;
+    } else if (currentChar == '[') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TLBRACK;
+    } else if (currentChar == ']') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TRBRACK;
+    } else if (currentChar == ';') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TSEMICOL;
+    } else if (currentChar == ',') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TCOMMA;
+    } else if (currentChar == '.') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TDOT;
+    } else if (currentChar == '=') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TEQ;
+    } else if (currentChar == '#') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TNEQ;
+    } else if (currentChar == '+') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TPLUS;
+    } else if (currentChar == '-') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TMINUS;
+    } else if (currentChar == '*') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TMUL;
+    } else if (currentChar == '&') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TAND;
+    } else if (currentChar == '~') {
+        currentChar = fgetc(fileIn);
+        currentSymbol = TNOT;
+    } else if (currentChar == ':') {
+        currentChar = fgetc(fileIn);
+        if (currentChar == '=') {
+            currentChar = fgetc(fileIn);
+            currentSymbol = TASSIGN;
         } else {
-            symbol = TCOLON;
+            currentSymbol = TCOLON;
         }
-    } else if (cch == '<') {
-        cch = fgetc(fin);
-        if (cch == '=') {
-            cch = fgetc(fin);
-            symbol = TLTE;
+    } else if (currentChar == '<') {
+        currentChar = fgetc(fileIn);
+        if (currentChar == '=') {
+            currentChar = fgetc(fileIn);
+            currentSymbol = TLTE;
         } else {
-            symbol = TLT;
+            currentSymbol = TLT;
         }
-    } else if (cch == '>') {
-        cch = fgetc(fin);
-        if (cch == '=') {
-            cch = fgetc(fin);
-            symbol = TGTE;
+    } else if (currentChar == '>') {
+        currentChar = fgetc(fileIn);
+        if (currentChar == '=') {
+            currentChar = fgetc(fileIn);
+            currentSymbol = TGTE;
         } else {
-            symbol = TGT;
+            currentSymbol = TGT;
         }
     } else {
-        printf("Lexer error: Unknown char '%c'\n", cch);
-        cleanup_files();
+        printf("Lexer error: Unknown char '%c'\n", currentChar);
+        cleanupFiles();
         exit(1);
     }
 }
 
-void consume_id(char *buf) {
-    strncpy(buf, ctoken, MAXIDLEN - 1);
+void consumeIdentifier(char *buf) {
+    strncpy(buf, currentToken, MAXIDLEN - 1);
     buf[MAXIDLEN - 1] = '\0';
-    match(TIDENT, "Identifier expected");
+    matchSymbol(TIDENT, "Identifier expected");
 }
 
-void designator(void) {
+/* -- Parser -- */
+
+int parseDesignator(void) {
     char mname[MAXIDLEN];
     char name[MAXIDLEN];
+    int tid = 0;
+    int idxType;
 
-    strcpy(mname, modName);
+    strcpy(mname, moduleName);
 
-    if(stab_ftype == TSYMAMOD) {
-        stab_finded = stab_id[stab_finded];
-        stab_fname = &stab_nbuf[stab[stab_finded]];
-        stab_ftype = stab_type[stab_finded];
+    if(symbolTableFoundType == TSYMAMOD) {
+        symbolTableFoundIndex = symbolTableId[symbolTableFoundIndex];
+        symbolTableFoundName = &symbolTableNameBuffer[symbolTable[symbolTableFoundIndex]];
+        symbolTableFoundType = symbolTableType[symbolTableFoundIndex];
     }
 
-    if((stab_ftype == TSYMTHISMOD) || (stab_ftype == TSYMIMOD)) {
-        strcpy(mname, stab_fname);
-        match(TIDENT, "module name expected");
-        match(TDOT, ". expected");
+    if((symbolTableFoundType == TSYMTHISMOD) || (symbolTableFoundType == TSYMIMOD)) {
+        strcpy(mname, symbolTableFoundName);
+        matchSymbol(TIDENT, "module name expected");
+        matchSymbol(TDOT, ". expected");
+        if (currentSymbol == TIDENT) {
+            symbolTableFind(currentToken);
+        }
     }
 
-    consume_id(name);
+    tid = symbolTableDataType[symbolTableFoundIndex];
+    consumeIdentifier(name);
 
-    fprintf(fc, "%s_%s", mname, name);
+    emitCode(mname);
+    emitCode("_");
+    emitCode(name);
 
-    if(isLex(TLBRACK)) {
-        emit("[");
-        expr();
-        match(TRBRACK, "] expected");
-        emit("]");
+    while (checkLexeme(TLBRACK)) {
+        if (typeForm[tid] != 7) fatalError("Array expected");
+        tid = typeBase[tid];
+        emitCode("[");
+        idxType = parseExpression();
+        checkTypeCompatibility(idxType, 1);
+        matchSymbol(TRBRACK, "] expected");
+        emitCode("]");
     }
+    return tid;
 }
 
-void params(void) {
-    match(TLPAREN, "( expected");
-    emit("(");
-    if (symbol != TRPAREN) {
+void parseParameters(void) {
+    matchSymbol(TLPAREN, "( expected");
+    emitCode("(");
+    if (currentSymbol != TRPAREN) {
         do {
-            expr();
-            if (isLex(TCOMMA)) emit(", ");
+            parseExpression();
+            if (checkLexeme(TCOMMA)) emitCode(", ");
             else break;
         } while (1);
     }
-    match(TRPAREN, ") expected");
-    emit(")");
+    matchSymbol(TRPAREN, ") expected");
+    emitCode(")");
 }
 
-void factor(void) {
-    if (symbol == TNUMBER || symbol == TCHAR || symbol == TSTRING) {
-        emit(ctoken);
-        next();
-    } else if (isLex(TLPAREN)) {
-        emit("(");
-        expr();
-        match(TRPAREN, ") expected");
-        emit(")");
-    } else if (symbol == TIDENT) {
-        designator();
-        if (symbol == TLPAREN) params();
+int parseFactor(void) {
+    int tid = 0;
+    int argT, t1, t2;
+    if (currentSymbol == TNUMBER) {
+        emitCode(currentToken);
+        /* Simple heuristic for type inference */
+        if (strchr(currentToken, '.') || strchr(currentToken, 'E')) tid = 3;
+        else tid = 1;
+        nextToken();
+    } else if (currentSymbol == TCHAR) {
+        emitCode(currentToken);
+        tid = 6;
+        nextToken();
+    } else if (currentSymbol == TSTRING) {
+        emitCode(currentToken);
+        tid = 7;
+        nextToken();
+    } else if (checkLexeme(TLPAREN)) {
+        emitCode("(");
+        tid = parseExpression();
+        matchSymbol(TRPAREN, ") expected");
+        emitCode(")");
+    } else if (checkLexeme(TNOT)) {
+        emitCode("!");
+        tid = parseFactor();
+        checkTypeCompatibility(tid, 5);
+    } else if (currentSymbol == TFABS) {
+        nextToken();
+        matchSymbol(TLPAREN, "( expected");
+        argT = parseExpression();
+        if (argT == 3 || argT == 4) emitCode("fabs(");
+        else emitCode("abs(");
+        matchSymbol(TRPAREN, ") expected");
+        emitCode(")");
+        tid = argT;
+    } else if (currentSymbol == TFODD) {
+        nextToken();
+        matchSymbol(TLPAREN, "( expected");
+        emitCode("((");
+        argT = parseExpression();
+        checkTypeCompatibility(argT, 1);
+        matchSymbol(TRPAREN, ") expected");
+        emitCode(") & 1)");
+        tid = 5;
+    } else if (currentSymbol == TFASH) {
+        nextToken();
+        matchSymbol(TLPAREN, "( expected");
+        fprintf(fileC, "%s_ASH(", moduleName);
+        t1 = parseExpression();
+        checkTypeCompatibility(t1, 1);
+        matchSymbol(TCOMMA, ", expected");
+        emitCode(", ");
+        t2 = parseExpression();
+        checkTypeCompatibility(t2, 1);
+        matchSymbol(TRPAREN, ") expected");
+        emitCode(")");
+        tid = t1;
+    } else if (currentSymbol == TFASSERT) {
+        nextToken();
+        matchSymbol(TLPAREN, "( expected");
+        emitCode("if (!(");
+        t1 = parseExpression();
+        checkTypeCompatibility(t1, 5);
+        emitCode(")) abort()");
+        matchSymbol(TRPAREN, ") expected");
+        tid = 0;
+    } else if (currentSymbol == TFORD) {
+        nextToken();
+        matchSymbol(TLPAREN, "( expected");
+        emitCode("((int)(");
+        parseExpression();
+        emitCode("))");
+        matchSymbol(TRPAREN, ") expected");
+        tid = 1;
+    } else if (currentSymbol == TFCHR) {
+        nextToken();
+        matchSymbol(TLPAREN, "( expected");
+        emitCode("((char)(");
+        t1 = parseExpression();
+        checkTypeCompatibility(t1, 1);
+        emitCode("))");
+        matchSymbol(TRPAREN, ") expected");
+        tid = 6;
+    } else if (currentSymbol == TFFLOOR) {
+        nextToken();
+        matchSymbol(TLPAREN, "( expected");
+        emitCode("((long)floor(");
+        t1 = parseExpression();
+        if (t1 != 3 && t1 != 4) fatalError("Real expected");
+        emitCode("))");
+        matchSymbol(TRPAREN, ") expected");
+        tid = 2;
+    } else if (currentSymbol == TIDENT) {
+        tid = parseDesignator();
+        if (currentSymbol == TLPAREN) {
+            parseParameters();
+        }
     } else {
-        error("Factor expected");
+        fatalError("Factor expected");
     }
+    return tid;
 }
 
-void term(void) {
-    emit("(");
-    factor();
-    while (symbol >= TMUL && symbol <= TAND) {
-        emit(get_op_str(symbol));
-        next();
-        factor();
+int parseTerm(void) {
+    int t2, t1;
+
+    emitCode("(");
+    t1 = parseFactor();
+    while (currentSymbol >= TMUL && currentSymbol <= TAND) {
+        emitCode(getOperatorString(currentSymbol));
+        nextToken();
+        t2 = parseFactor();
+        checkTypeCompatibility(t1, t2);
     }
-    emit(")");
+    emitCode(")");
+    return t1;
 }
 
-void simple_expr(void) {
-    if (isLex(TPLUS)) { /* unary plus ignored */ }
-    else if (isLex(TMINUS)) emit("-");
+int parseSimpleExpression(void) {
+    int t1, t2;
+    if (checkLexeme(TPLUS)) { }
+    else if (checkLexeme(TMINUS)) emitCode("-");
 
-    term();
-    while (symbol >= TPLUS && symbol <= TOR) {
-        emit(get_op_str(symbol));
-        next();
-        term();
+    t1 = parseTerm();
+    while (currentSymbol >= TPLUS && currentSymbol <= TOR) {
+        emitCode(getOperatorString(currentSymbol));
+        nextToken();
+        t2 = parseTerm();
+        checkTypeCompatibility(t1, t2);
     }
+    return t1;
 }
 
-void expr(void) {
-    emit("(");
-    simple_expr();
-    emit(")");
-    if (symbol >= TEQ && symbol <= TGTE) {
-        emit(get_op_str(symbol));
-        next();
-        emit("(");
-        simple_expr();
-        emit(")");
+int parseExpression(void) {
+    int t1, t2;
+    emitCode("(");
+    t1 = parseSimpleExpression();
+    emitCode(")");
+    if (currentSymbol >= TEQ && currentSymbol <= TGTE) {
+        emitCode(getOperatorString(currentSymbol));
+        nextToken();
+        emitCode("(");
+        t2 = parseSimpleExpression();
+        checkTypeCompatibility(t1, t2);
+        emitCode(")");
+        return 5; /* Result of comparison is always Boolean */
     }
+    return t1;
 }
 
-void parse_basic_type(char *prefix, char *suffix) {
+int parseBasicType(char *prefix, char *suffix) {
+    char modName[MAXIDLEN];
+    int targetId;
+    int tid = 0;
+    int isQualified = 0;
+    char typeName[MAXIDLEN * 2 + 1];
+
     prefix[0] = 0;
     suffix[0] = 0;
 
-    if (symbol == TIDENT) {
-        strcpy(prefix, ctoken);
-        next();
+    if (currentSymbol == TIDENT) {
+
+        if (symbolTableFind(currentToken)) {
+            if (symbolTableFoundType == TSYMIMOD || symbolTableFoundType == TSYMAMOD) {
+                if (symbolTableFoundType == TSYMAMOD) {
+                    targetId = symbolTableId[symbolTableFoundIndex];
+                    strcpy(modName, &symbolTableNameBuffer[symbolTable[targetId]]);
+                } else {
+                    strcpy(modName, symbolTableFoundName);
+                }
+
+                nextToken();
+                matchSymbol(TDOT, ". expected");
+
+                if (currentSymbol != TIDENT) fatalError("Type identifier expected after module");
+
+                sprintf(typeName, "%s_%s", modName, currentToken);
+                isQualified = 1;
+            } else {
+                tid = symbolTableDataType[symbolTableFoundIndex];
+            }
+        }
+
+        if (!isQualified) {
+            strcpy(typeName, currentToken);
+        }
+
+        strcpy(prefix, typeName);
+        nextToken();
     }
-    else if (isLex(TTYPEINT)) {
+    else if (checkLexeme(TTYPEINT)) {
         strcpy(prefix, "int");
+        tid=1;
     }
-    else if (isLex(TTYPELONG)) {
+    else if (checkLexeme(TTYPELONG)) {
         strcpy(prefix, "long");
+        tid=2;
     }
-    else if (isLex(TTYPEREAL)) {
+    else if (checkLexeme(TTYPEREAL)) {
         strcpy(prefix, "float");
+        tid=3;
     }
-    else if (isLex(TTYPEDBL)) {
+    else if (checkLexeme(TTYPEDBL)) {
         strcpy(prefix, "double");
+        tid=4;
     }
-    else if (isLex(TTYPEBOOL)) {
-        strcpy(prefix, "char");
+    else if (checkLexeme(TTYPEBOOL)) {
+        strcpy(prefix, "bool");
+        tid=5;
     }
-    else if (isLex(TTYPECHAR)) {
+    else if (checkLexeme(TTYPECHAR)) {
         strcpy(prefix, "char");
+        tid=6;
     }
     else {
-        error("Type expected");
+        fatalError("Type expected");
     }
+    return tid;
 }
 
-void parse_type(char *prefix, char *suffix) {
-    char size[MAXIDLEN];
+int parseType(char *prefix, char *suffix) {
+    char size[256];
+    int tid = 0, base;
+
     prefix[0] = 0;
     suffix[0] = 0;
 
-    if (isLex(TPOINTER)) {
-        if (isLex(TTO)) {
-            parse_basic_type(prefix, suffix);
+    if (checkLexeme(TPOINTER)) {
+        if (checkLexeme(TTO)) {
+            base = parseBasicType(prefix, suffix);
             strcat(prefix, " *");
+            tid = typesPtr++;
+            typeForm[tid] = 8;
+            typeBase[tid] = base;
         } else {
             strcpy(prefix, "void *");
+            tid = typesPtr++;
+            typeForm[tid] = 8;
+            typeBase[tid] = 0;
         }
     }
-    else if (isLex(TARRAY)) {
-        if (symbol == TNUMBER || symbol == TIDENT) {
-            strcpy(size, ctoken);
-            next();
-        } else error("Array size expected");
+    else if (checkLexeme(TARRAY)) {
+        int arrLen = 0;
+        if (currentSymbol == TNUMBER) {
+            strcpy(size, currentToken);
+            arrLen = atoi(currentToken);
+            nextToken();
+        } else if (currentSymbol == TIDENT) {
+            if (symbolTableFind(currentToken)) {
+                strcpy(size, moduleName);
+                if(symbolTableFoundType == TSYMAMOD) {
+                    symbolTableFoundIndex = symbolTableId[symbolTableFoundIndex];
+                    symbolTableFoundName = &symbolTableNameBuffer[symbolTable[symbolTableFoundIndex]];
+                    symbolTableFoundType = symbolTableType[symbolTableFoundIndex];
+                }
 
-        match(TOF, "OF expected");
+                if((symbolTableFoundType == TSYMTHISMOD) || (symbolTableFoundType == TSYMIMOD)) {
+                    strcpy(size, symbolTableFoundName);
+                    matchSymbol(TIDENT, "module name expected");
+                    matchSymbol(TDOT, ". expected");
+                }
+                if (symbolTableFoundType == TSYMCONST) {
+                    strcat(size, "_");
+                    strcat(size, currentToken);
+                } else {
+                    strcpy(size, currentToken);
+                }
+                nextToken();
+            } else fatalError("Array size expected");
+        } else fatalError("Array size expected");
 
-        if (symbol == TARRAY) {
-            error("Multidimensional arrays not supported");
-        }
+        matchSymbol(TOF, "OF expected");
 
-        parse_basic_type(prefix, suffix);
+        base = parseType(prefix, suffix);
 
         strcpy(suffix, "[");
         strcat(suffix, size);
         strcat(suffix, "]");
+
+        tid = typesPtr++;
+        typeForm[tid] = 7;
+        typeBase[tid] = base;
+        typeLen[tid] = arrLen;
     }
-    else if (isLex(TPROC)) {
+    else if (checkLexeme(TPROC)) {
         strcpy(prefix, "void (*");
         strcpy(suffix, ")()");
+        tid = 9;
     }
     else {
-        parse_basic_type(prefix, suffix);
+        tid = parseBasicType(prefix, suffix);
     }
+    return tid;
 }
 
-void print_var(char *tgt, const char *name, const char *prefix, const char *suffix) {
+void printVariable(char *tgt, const char *name, const char *prefix, const char *suffix) {
     strcpy(tgt, prefix);
     strcat(tgt, " ");
-    strcat(tgt, modName);
+    strcat(tgt, moduleName);
     strcat(tgt, "_");
     strcat(tgt, name);
     strcat(tgt, suffix);
 }
 
-void stmt(void) {
-    if (symbol == TIDENT) {
-        designator();
-        if (isLex(TASSIGN)) {
-            emit(" = ");
-            expr();
-        } else if (symbol == TLPAREN) {
-            params();
+void parseStatement(void) {
+    int t, t2;
+    char lhsCapture[2048] = {0};
+    int isIncrement;
+
+    if (currentSymbol == TIDENT) {
+        captureBuffer = lhsCapture;
+        t = parseDesignator();
+        captureBuffer = NULL;
+
+        if (checkLexeme(TASSIGN)) {
+            if (currentSymbol == TSTRING) {
+                fprintf(fileC, "strcpy(%s, %s)", lhsCapture, currentToken);
+                nextToken();
+            } else {
+                fprintf(fileC, "%s = ", lhsCapture);
+                t2 = parseExpression();
+                checkTypeCompatibility(t, t2);
+            }
+        } else if (currentSymbol == TLPAREN) {
+            fprintf(fileC, "%s", lhsCapture);
+            parseParameters();
         } else {
-            emit("()");
+            fprintf(fileC, "%s()", lhsCapture);
         }
-        emit(";\n");
-    } else if (isLex(TIF)) {
-        emit("if (");
-        expr();
-        emit(") {\n");
-        match(TTHEN, "THEN expected");
-        stmt_seq();
-        while (isLex(TELSIF)) {
-            emit("} else if (");
-            expr();
-            emit(") {\n");
-            match(TTHEN, "THEN expected");
-            stmt_seq();
+        emitCode(";\n");
+    } else if (checkLexeme(TIF)) {
+        emitCode("if (");
+        t = parseExpression();
+        checkTypeCompatibility(t, 5);
+        emitCode(") {\n");
+        matchSymbol(TTHEN, "THEN expected");
+        parseStatementSequence();
+        while (checkLexeme(TELSIF)) {
+            emitCode("} else if (");
+            t = parseExpression();
+            checkTypeCompatibility(t, 5);
+            emitCode(") {\n");
+            matchSymbol(TTHEN, "THEN expected");
+            parseStatementSequence();
         }
-        if (isLex(TELSE)) {
-            emit("} else {\n");
-            stmt_seq();
+        if (checkLexeme(TELSE)) {
+            emitCode("} else {\n");
+            parseStatementSequence();
         }
-        match(TEND, "END expected");
-        emit("}\n");
-    } else if (isLex(TWHILE)) {
-        emit("while (");
-        expr();
-        emit(") {\n");
-        match(TDO, "DO expected");
-        stmt_seq();
-        match(TEND, "END expected");
-        emit("}\n");
-    } else if (isLex(TREPEAT)) {
-        emit("do {\n");
-        stmt_seq();
-        emit("\n} while (!(\n");
-        match(TUNTIL, "UNTIL expected");
-        expr();
-        emit("));\n");
-    } else if (isLex(TRETURN)) {
-        emit("return ");
-        if (symbol != TSEMICOL && symbol != TEND && symbol != TELSE && symbol != TELSIF) {
-            expr();
+        matchSymbol(TEND, "END expected");
+        emitCode("}\n");
+    } else if (checkLexeme(TWHILE)) {
+        emitCode("while (");
+        t = parseExpression();
+        checkTypeCompatibility(t, 5);
+        emitCode(") {\n");
+        matchSymbol(TDO, "DO expected");
+        parseStatementSequence();
+        matchSymbol(TEND, "END expected");
+        emitCode("}\n");
+    } else if (checkLexeme(TREPEAT)) {
+        emitCode("do {\n");
+        parseStatementSequence();
+        emitCode("\n} while (!(\n");
+        matchSymbol(TUNTIL, "UNTIL expected");
+        t = parseExpression();
+        checkTypeCompatibility(t, 5);
+        emitCode("));\n");
+    } else if (checkLexeme(TRETURN)) {
+        emitCode("return ");
+        if (currentSymbol != TSEMICOL && currentSymbol != TEND && currentSymbol != TELSE && currentSymbol != TELSIF) {
+            parseExpression();
         }
-        emit(";\n");
-    } else if (symbol == TINC || symbol == TDEC) {
-        int is_inc = (symbol == TINC);
-        next();
-        match(TLPAREN, "( expected");
-        designator();
-        if (isLex(TCOMMA)) {
-            emit(is_inc ? " += " : " -= ");
-            expr();
+        emitCode(";\n");
+    } else if (currentSymbol == TINC || currentSymbol == TDEC) {
+        isIncrement = (currentSymbol == TINC);
+        nextToken();
+        matchSymbol(TLPAREN, "( expected");
+        parseDesignator();
+        if (checkLexeme(TCOMMA)) {
+            emitCode(isIncrement ? " += " : " -= ");
+            parseExpression();
         } else {
-            emit(is_inc ? "++" : "--");
+            emitCode(isIncrement ? "++" : "--");
         }
-        match(TRPAREN, ") expected");
-        emit(";\n");
-    } else if (isLex(TBREAK)) {
-        emit("break;\n");
-    } else if (isLex(TCONT)) {
-        emit("continue;\n");
+        matchSymbol(TRPAREN, ") expected");
+        emitCode(";\n");
+    } else if (checkLexeme(TBREAK)) {
+        emitCode("break;\n");
+    } else if (checkLexeme(TCONT)) {
+        emitCode("continue;\n");
     }
 }
 
-void stmt_seq(void) {
-    while (symbol != TEND && symbol != TELSIF && symbol != TELSE) {
-        stmt();
-        isLex(TSEMICOL);
+void parseStatementSequence(void) {
+    while (currentSymbol != TEND && currentSymbol != TELSIF && currentSymbol != TELSE) {
+        parseStatement();
+        checkLexeme(TSEMICOL);
     }
 }
 
-void var_decl(void) {
+void parseVariableDeclaration(void) {
     char idBuf[MAXIDLEN];
-    int i, start_stab, isExp;
-    char typePre[MAXTYPELEN], typeSuf[MAXTYPELEN];
-    char declBuf[MAXTYPELEN + MAXIDLEN * 2];
+    int i, startSymbolTablePtr, isExported;
+    char typePrefix[MAXTYPELEN], typeSuffix[MAXTYPELEN];
+    char declarationBuffer[MAXTYPELEN + MAXIDLEN * 2];
+    int tid;
 
-    while (symbol == TIDENT) {
-        start_stab = stab_ptr;
+    while (currentSymbol == TIDENT) {
+        startSymbolTablePtr = symbolTablePtr;
         do {
-            consume_id(idBuf);
-            isExp = isLex(TMUL);
+            consumeIdentifier(idBuf);
+            isExported = checkLexeme(TMUL);
 
-            if (stab_find(idBuf)) error("Duplicate identifier");
-            stab_add(idBuf, isExp, isExp ? TSYMGEVAR : TSYMGVAR);
+            if (symbolTableFind(idBuf)) fatalError("Duplicate identifier");
+            symbolTableAdd(idBuf, isExported, isExported ? TSYMGEVAR : TSYMGVAR, 0);
 
-        } while (isLex(TCOMMA));
+        } while (checkLexeme(TCOMMA));
 
-        match(TCOLON, ": expected");
-        parse_type(typePre, typeSuf);
-        match(TSEMICOL, "; expected");
+        matchSymbol(TCOLON, ": expected");
+        tid = parseType(typePrefix, typeSuffix);
+        matchSymbol(TSEMICOL, "; expected");
 
-        for (i = start_stab; i < stab_ptr; i++) {
-            print_var(declBuf, &stab_nbuf[stab[i]], typePre, typeSuf);
+        for (i = startSymbolTablePtr; i < symbolTablePtr; i++) {
+            symbolTableDataType[i] = tid;
+            printVariable(declarationBuffer, &symbolTableNameBuffer[symbolTable[i]], typePrefix, typeSuffix);
 
-            if (isGlobalDef) {
-                if (stab_type[i] == TSYMGEVAR) {
-                    fprintf(fc, "%s;\n", declBuf);
-                    fprintf(fh, "extern %s;\n", declBuf);
-                } else if (stab_type[i] == TSYMGVAR) {
-                    fprintf(fc, "static %s;\n", declBuf);
+            if (isGlobalDefinition) {
+                if (symbolTableType[i] == TSYMGEVAR) {
+                    fprintf(fileC, "%s;\n", declarationBuffer);
+                    fprintf(fileHeader, "extern %s;\n", declarationBuffer);
+                } else if (symbolTableType[i] == TSYMGVAR) {
+                    fprintf(fileC, "static %s;\n", declarationBuffer);
                 }
             } else {
-                fprintf(fc, "%s;\n", declBuf);
+                fprintf(fileC, "%s;\n", declarationBuffer);
             }
         }
     }
 }
 
-void parse_proc_decl(int *saved_stab_ptr, int *saved_nbuf_ptr) {
+void parseProcedureHeader(int *savedSymbolTablePtr, int *savedSymbolTableNameBufferPtr) {
     int exp = 0, i;
-    int start_stab;
+    int startSymbolTablePtr;
+    int tid;
 
-    g_argList[0] = 0;
-    g_retPre[0] = 0;
-    g_retSuf[0] = 0;
-    strcpy(g_retPre, "void");
+    globalArgList[0] = 0;
+    globalRetPrefix[0] = 0;
+    globalRetSuffix[0] = 0;
+    strcpy(globalRetPrefix, "void");
 
-    consume_id(g_procName);
-    exp = isLex(TMUL);
+    consumeIdentifier(globalProcName);
+    exp = checkLexeme(TMUL);
 
-    stab_add(g_procName, 0, TSYMPROC);
+    symbolTableAdd(globalProcName, 0, TSYMPROC, 0);
 
-    *saved_stab_ptr = stab_ptr;
-    *saved_nbuf_ptr = stab_nbuf_ptr;
+    *savedSymbolTablePtr = symbolTablePtr;
+    *savedSymbolTableNameBufferPtr = symbolTableNameBufferPtr;
 
-    if (isLex(TLPAREN)) {
-        if (symbol != TRPAREN) {
+    if (checkLexeme(TLPAREN)) {
+        if (currentSymbol != TRPAREN) {
             do {
-                if (symbol == TVAR) {
-                    error("VAR parameters not supported");
+                if (currentSymbol == TVAR) {
+                    fatalError("VAR parameters not supported");
                 }
 
-                start_stab = stab_ptr;
+                startSymbolTablePtr = symbolTablePtr;
                 do {
-                    consume_id(g_idBuf);
-                    if (stab_find(g_idBuf)) error("Duplicate parameter");
-                    stab_add(g_idBuf, 0, TSYMPARAM);
-                } while (isLex(TCOMMA));
+                    consumeIdentifier(globalIdBuffer);
+                    if (symbolTableFind(globalIdBuffer)) fatalError("Duplicate parameter");
+                    symbolTableAdd(globalIdBuffer, 0, TSYMPARAM, 0);
+                } while (checkLexeme(TCOMMA));
 
-                match(TCOLON, ": expected");
-                parse_type(g_pPre, g_pSuf);
+                matchSymbol(TCOLON, ": expected");
+                tid = parseType(globalParamPrefix, globalParamSuffix);
 
-                for (i = start_stab; i < stab_ptr; i++) {
-                    if (strlen(g_argList) > 0) strcat(g_argList, ", ");
-                    print_var(g_oneArg, &stab_nbuf[stab[i]], g_pPre, g_pSuf);
-                    strcat(g_argList, g_oneArg);
+                for (i = startSymbolTablePtr; i < symbolTablePtr; i++) {
+                    symbolTableDataType[i] = tid;
+                    if (strlen(globalArgList) > 0) strcat(globalArgList, ", ");
+                    printVariable(globalOneArg, &symbolTableNameBuffer[symbolTable[i]], globalParamPrefix, globalParamSuffix);
+                    strcat(globalArgList, globalOneArg);
                 }
-            } while (isLex(TSEMICOL));
+            } while (checkLexeme(TSEMICOL));
         }
-        match(TRPAREN, ") expected");
+        matchSymbol(TRPAREN, ") expected");
     }
 
-    if (strlen(g_argList) == 0) strcpy(g_argList, "void");
+    if (strlen(globalArgList) == 0) strcpy(globalArgList, "void");
 
-    if (isLex(TCOLON)) {
-        parse_type(g_retPre, g_retSuf);
+    if (checkLexeme(TCOLON)) {
+        parseType(globalRetPrefix, globalRetSuffix);
     }
-    match(TSEMICOL, "; expected");
+    matchSymbol(TSEMICOL, "; expected");
 
-    fprintf(fc, "\n%s%s %s_%s(%s)%s", exp ? "" : "static ", g_retPre, modName, g_procName, g_argList, g_retSuf);
-    if (exp) fprintf(fh, "extern %s %s_%s(%s)%s;\n", g_retPre, modName, g_procName, g_argList, g_retSuf);
-    emit(" {\n");
+    fprintf(fileC, "\n%s%s %s_%s(%s)%s", exp ? "" : "static ", globalRetPrefix, moduleName, globalProcName, globalArgList, globalRetSuffix);
+    if (exp) fprintf(fileHeader, "extern %s %s_%s(%s)%s;\n", globalRetPrefix, moduleName, globalProcName, globalArgList, globalRetSuffix);
+    emitCode(" {\n");
 }
 
-void proc_decl(void) {
-    int old_stab_ptr, old_stab_nbuf_ptr;
+void parseProcedureDeclaration(void) {
+    int oldSymbolTablePtr, oldSymbolTableNameBufferPtr;
 
-    parse_proc_decl(&old_stab_ptr, &old_stab_nbuf_ptr);
+    parseProcedureHeader(&oldSymbolTablePtr, &oldSymbolTableNameBufferPtr);
 
-    isGlobalDef = 0;
-    while (isLex(TVAR)) var_decl();
+    isGlobalDefinition = 0;
+    while (checkLexeme(TVAR)) parseVariableDeclaration();
 
-    match(TBEGIN, "BEGIN expected");
-    stmt_seq();
-    match(TEND, "END expected");
+    matchSymbol(TBEGIN, "BEGIN expected");
+    parseStatementSequence();
+    matchSymbol(TEND, "END expected");
 
-    match(TIDENT, "Identifier expected");
-    match(TSEMICOL, "; expected");
+    matchSymbol(TIDENT, "Identifier expected");
+    matchSymbol(TSEMICOL, "; expected");
 
-    emit("}\n");
-    isGlobalDef = 1;
+    emitCode("}\n");
+    isGlobalDefinition = 1;
 
-    stab_ptr = old_stab_ptr;
-    stab_nbuf_ptr = old_stab_nbuf_ptr;
+    symbolTablePtr = oldSymbolTablePtr;
+    symbolTableNameBufferPtr = oldSymbolTableNameBufferPtr;
 }
 
-void const_decl(void) {
-    char cName[MAXIDLEN];
-    int isExp;
-    while (symbol == TIDENT) {
-        consume_id(cName);
-        isExp = isLex(TMUL);
-        match(TEQ, "= expected");
-        stab_add(cName, 0, TSYMCONST);
-        fprintf(isExp ? fh : fc, "#define\t%s_%s\t%s\n", modName, cName, ctoken);
-        match(TNUMBER, "Number expected");
-        match(TSEMICOL, "; expected");
+void parseConstantDeclaration(void) {
+    char constName[MAXIDLEN];
+    int isExported;
+    int tid = 0;
+
+    while (currentSymbol == TIDENT) {
+        consumeIdentifier(constName);
+        isExported = checkLexeme(TMUL);
+        matchSymbol(TEQ, "= expected");
+
+        if (currentSymbol == TNUMBER) {
+            if (strchr(currentToken, '.') || strchr(currentToken, 'E')) tid = 3;
+            else tid = 1;
+        } else if (currentSymbol == TSTRING) {
+            tid = 7;
+        } else if (currentSymbol == TCHAR) {
+            tid = 6;
+        }
+
+        symbolTableAdd(constName, 0, TSYMCONST, tid);
+        fprintf(isExported ? fileHeader : fileC, "#define\t%s_%s\t%s\n", moduleName, constName, currentToken);
+
+        if (currentSymbol == TNUMBER) matchSymbol(TNUMBER, "Number expected");
+        else if (currentSymbol == TSTRING) matchSymbol(TSTRING, "String expected");
+        else if (currentSymbol == TCHAR) matchSymbol(TCHAR, "Char expected");
+        else nextToken();
+
+        matchSymbol(TSEMICOL, "; expected");
     }
 }
 
+void initCompiler() {
+    currentLine = 1;
+    isGlobalDefinition = 0;
+    captureBuffer = NULL;
 
-void mod_init() {
-    curLine = 1;
-    isGlobalDef = 0;
+    symbolTablePtr = 0;
+    symbolTableNameBufferPtr = 0;
+    typesPtr = 10;
 
-    stab_ptr = 0;
-    stab_nbuf_ptr = 0;
+    typeForm[1]=1;
+    typeForm[2]=2;
+    typeForm[3]=3;
+    typeForm[4]=4;
+    typeForm[5]=5;
+    typeForm[6]=6;
+    typeForm[8]=8;
 
-    stab_add("MODULE", 0, TMODULE);
-    stab_add("BEGIN", 0, TBEGIN);
-    stab_add("END", 0, TEND);
-    stab_add("IMPORT", 0, TIMPORT);
-    stab_add("CONST", 0, TCONST);
-    stab_add("VAR", 0, TVAR);
-    stab_add("PROCEDURE", 0, TPROC);
+    symbolTableAdd("MODULE", 0, TMODULE, 0);
+    symbolTableAdd("BEGIN", 0, TBEGIN, 0);
+    symbolTableAdd("END", 0, TEND, 0);
+    symbolTableAdd("IMPORT", 0, TIMPORT, 0);
+    symbolTableAdd("CONST", 0, TCONST, 0);
+    symbolTableAdd("VAR", 0, TVAR, 0);
+    symbolTableAdd("PROCEDURE", 0, TPROC, 0);
 
-    stab_add("IF", 0, TIF);
-    stab_add("THEN", 0, TTHEN);
-    stab_add("ELSIF", 0, TELSIF);
-    stab_add("ELSE", 0, TELSE);
-    stab_add("WHILE", 0, TWHILE);
-    stab_add("DO", 0, TDO);
-    stab_add("REPEAT", 0, TREPEAT);
-    stab_add("UNTIL", 0, TUNTIL);
-    stab_add("RETURN", 0, TRETURN);
-    stab_add("ARRAY", 0, TARRAY);
+    symbolTableAdd("IF", 0, TIF, 0);
+    symbolTableAdd("THEN", 0, TTHEN, 0);
+    symbolTableAdd("ELSIF", 0, TELSIF, 0);
+    symbolTableAdd("ELSE", 0, TELSE, 0);
+    symbolTableAdd("WHILE", 0, TWHILE, 0);
+    symbolTableAdd("DO", 0, TDO, 0);
+    symbolTableAdd("REPEAT", 0, TREPEAT, 0);
+    symbolTableAdd("UNTIL", 0, TUNTIL, 0);
+    symbolTableAdd("RETURN", 0, TRETURN, 0);
+    symbolTableAdd("ARRAY", 0, TARRAY, 0);
 
-    stab_add("OF", 0, TOF);
-    stab_add("POINTER", 0, TPOINTER);
-    stab_add("TO", 0, TTO);
-    stab_add("INC", 0, TINC);
-    stab_add("DEC", 0, TDEC);
-    stab_add("BREAK", 0, TBREAK);
-    stab_add("CONTINUE", 0, TCONT);
+    symbolTableAdd("OF", 0, TOF, 0);
+    symbolTableAdd("POINTER", 0, TPOINTER, 0);
+    symbolTableAdd("TO", 0, TTO, 0);
+    symbolTableAdd("INC", 0, TINC, 0);
+    symbolTableAdd("DEC", 0, TDEC, 0);
+    symbolTableAdd("BREAK", 0, TBREAK, 0);
+    symbolTableAdd("CONTINUE", 0, TCONT, 0);
 
-    stab_add("OR", 0, TOR);
-    stab_add("DIV", 0, TDIV);
-    stab_add("MOD", 0, TMOD);
-    stab_add("TRUE", 0, TTRUE);
-    stab_add("FALSE", 0, TFALSE);
-    stab_add("NIL", 0, TNIL);
+    symbolTableAdd("OR", 0, TOR, 0);
+    symbolTableAdd("DIV", 0, TDIV, 0);
+    symbolTableAdd("MOD", 0, TMOD, 0);
+    symbolTableAdd("TRUE", 0, TTRUE, 5);
+    symbolTableAdd("FALSE", 0, TFALSE, 5);
+    symbolTableAdd("NIL", 0, TNIL, 8);
 
-    stab_add("INTEGER", 0, TTYPEINT);
-    stab_add("LONGINT", 0, TTYPELONG);
-    stab_add("REAL", 0, TTYPEREAL);
-    stab_add("LONGREAL", 0, TTYPEDBL);
-    stab_add("BOOLEAN", 0, TTYPEBOOL);
-    stab_add("CHAR", 0, TTYPECHAR);
+    symbolTableAdd("ABS", 0, TFABS, 0);
+    symbolTableAdd("ODD", 0, TFODD, 0);
+    symbolTableAdd("ASH", 0, TFASH, 0);
+    symbolTableAdd("ASSERT", 0, TFASSERT, 0);
+    symbolTableAdd("ORD", 0, TFORD, 0);
+    symbolTableAdd("CHR", 0, TFCHR, 0);
+    symbolTableAdd("FLOOR", 0, TFFLOOR, 0);
 
-    fin = fh = fc = NULL;
+    symbolTableAdd("INTEGER", 0, TTYPEINT, 1);
+    symbolTableAdd("LONGINT", 0, TTYPELONG, 2);
+    symbolTableAdd("REAL", 0, TTYPEREAL, 3);
+    symbolTableAdd("LONGREAL", 0, TTYPEDBL, 4);
+    symbolTableAdd("BOOLEAN", 0, TTYPEBOOL, 5);
+    symbolTableAdd("CHAR", 0, TTYPECHAR, 6);
+
+    fileIn = fileHeader = fileC = NULL;
 }
 
-void module(char *src) {
+void compileModule(char *src) {
     char *dot;
     int len;
-    int modId, modAliasId;
+    int moduleId, moduleAliasId;
 
-    mod_init();
+    initCompiler();
 
     strcpy(sourceFileName, src);
-    fin = fopen(sourceFileName, "r");
-    if (!fin) {
+    fileIn = fopen(sourceFileName, "r");
+    if (!fileIn) {
         printf("Error: Cannot open %s\n", sourceFileName);
         exit(1);
     }
 
     dot = strrchr(sourceFileName, '.');
     len = dot ? (int)(dot - sourceFileName) : (int)strlen(sourceFileName);
-    strncpy(outNameC, sourceFileName, len);
-    outNameC[len] = '\0';
-    strcpy(outNameHeader, outNameC);
-    strcat(outNameC, ".c");
-    strcat(outNameHeader, ".h");
+    strncpy(outputNameC, sourceFileName, len);
+    outputNameC[len] = '\0';
+    strcpy(outputNameHeader, outputNameC);
+    strcat(outputNameC, ".c");
+    strcat(outputNameHeader, ".h");
 
-    fc = fopen(outNameC, "w");
-    fh = fopen(outNameHeader, "w");
-    if (!fc || !fh) error("Cannot create output files");
+    fileC = fopen(outputNameC, "w");
+    fileHeader = fopen(outputNameHeader, "w");
+    if (!fileC || !fileHeader) fatalError("Cannot create output files");
 
-    cch = fgetc(fin);
-    next();
-    match(TMODULE, "MODULE expected");
-    consume_id(modName);
-    stab_add(modName, 0, TSYMTHISMOD);
-    match(TSEMICOL, "; expected");
+    currentChar = fgetc(fileIn);
+    nextToken();
+    matchSymbol(TMODULE, "MODULE expected");
+    consumeIdentifier(moduleName);
+    symbolTableAdd(moduleName, 0, TSYMTHISMOD, 0);
+    matchSymbol(TSEMICOL, "; expected");
 
-    fprintf(fh, "#ifndef %s_H\n#define %s_H\n\n#include <stdint.h>\n\n", modName, modName);
-    isGlobalDef = 1;
+    fprintf(fileHeader, "#ifndef %s_H\n#define %s_H\n\n#include <stdint.h>\n#include <stdbool.h>\n#include <stdlib.h>\n#include <string.h>\n#include <math.h>\n", moduleName, moduleName);
+    fprintf(fileHeader, "#define %s_ASH(x, n) ((n) >= 0 ? ((x) << (n)) : ((x) >> -(n)))\n\n", moduleName);
 
-    while (isLex(TIMPORT)) {
+    isGlobalDefinition = 1;
+
+    while (checkLexeme(TIMPORT)) {
         do {
-            if (symbol == TIDENT) {
-                modId = stab_add(ctoken, 0, TSYMIMOD);
-                next();
-                if(isLex(TASSIGN)) {
-                    modAliasId = modId;
-                    modId = stab_add(ctoken, 0, TSYMIMOD);
-                    stab_type[modAliasId] = TSYMAMOD;
-                    stab_id[modAliasId] = modId;
-                    match(TIDENT, "module name expected");
+            if (currentSymbol == TIDENT) {
+                moduleId = symbolTableAdd(currentToken, 0, TSYMIMOD, 0);
+                nextToken();
+                if(checkLexeme(TASSIGN)) {
+                    moduleAliasId = moduleId;
+                    moduleId = symbolTableAdd(currentToken, 0, TSYMIMOD, 0);
+                    symbolTableType[moduleAliasId] = TSYMAMOD;
+                    symbolTableId[moduleAliasId] = moduleId;
+                    matchSymbol(TIDENT, "module name expected");
                 }
-                fprintf(fc, "#include \"%s.h\"\n", stab_nbuf[stab[modId]]);
+                fprintf(fileC, "#include \"%s.h\"\n", symbolTableNameBuffer[symbolTable[moduleId]]);
             }
-        } while (isLex(TCOMMA));
-        match(TSEMICOL, "; expected");
+        } while (checkLexeme(TCOMMA));
+        matchSymbol(TSEMICOL, "; expected");
     }
 
-    fprintf(fc, "#include \"%s\"\n\n", outNameHeader);
+    fprintf(fileC, "#include \"%s\"\n\n", outputNameHeader);
 
     while (1) {
-        if (isLex(TCONST)) {
-            const_decl();
-        } else if (isLex(TVAR)) {
-            var_decl();
-        } else if(isLex(TPROC)) {
-            proc_decl();
+        if (checkLexeme(TCONST)) {
+            parseConstantDeclaration();
+        } else if (checkLexeme(TVAR)) {
+            parseVariableDeclaration();
+        } else if(checkLexeme(TPROC)) {
+            parseProcedureDeclaration();
         } else {
             break;
         }
     }
 
-    fprintf(fc, "\nstatic char is_%s_init = 0;\n", modName);
-    fprintf(fc, "void mod_%s_init() {\n", modName);
-    fprintf(fc, "if(is_%s_init) {\nreturn;\n}\nis_%s_init = 1;\n", modName, modName);
-    if(isLex(TBEGIN)) {
-        stmt_seq();
+    fprintf(fileC, "\nstatic char is_%s_init = 0;\n", moduleName);
+    fprintf(fileC, "void mod_%s_init() {\n", moduleName);
+    fprintf(fileC, "if(is_%s_init) {\nreturn;\n}\nis_%s_init = 1;\n", moduleName, moduleName);
+    if(checkLexeme(TBEGIN)) {
+        parseStatementSequence();
     }
-    emit("}\n");
-    fprintf(fh, "\nextern void mod_%s_init();\n", modName);
+    emitCode("}\n");
+    fprintf(fileHeader, "\nextern void mod_%s_init();\n", moduleName);
 
-    match(TEND, "END expected");
-    match(TIDENT, "Identifier expected");
-    match(TDOT, ". expected");
-    match(TEOF, "EOF expected");
+    matchSymbol(TEND, "END expected");
+    matchSymbol(TIDENT, "Identifier expected");
+    matchSymbol(TDOT, ". expected");
+    matchSymbol(TEOF, "EOF expected");
 
-    fprintf(fh, "\n#endif\n", modName);
-    cleanup_files();
+    fprintf(fileHeader, "\n#endif\n", moduleName);
+    cleanupFiles();
 }
 
 int main(int argc, char **argv) {
@@ -962,7 +1289,7 @@ int main(int argc, char **argv) {
     for(i = 1; i < argc; i++) {
         if (strlen(argv[i]) < MAXFNAMELEN) {
             if(argv[i][0] != '-') {
-                module(argv[i]);
+                compileModule(argv[i]);
             }
         }
     }

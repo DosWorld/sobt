@@ -22,7 +22,7 @@ used for retro/embedded programming or bootstrapping.
 Compile the translator with any standard C compiler:
 
 ```bash
-        wcl -ml sobt.c -fe=sobt.exe
+        wcl sobt.c -fe=sobt.exe
 ```
 
 or
